@@ -1,0 +1,3 @@
+[submodule "submodules/goat"]
+	path = submodules/goat
+	url = https://github.com/cs-au-dk/goat.git
