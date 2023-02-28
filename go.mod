@@ -3,7 +3,6 @@ module github.com/BarrensZeppelin/pointer
 go 1.20
 
 require (
-	github.com/BarrensZeppelin/pmmap v0.1.1
 	github.com/stretchr/testify v1.8.0
 	golang.org/x/tools v0.6.0
 )

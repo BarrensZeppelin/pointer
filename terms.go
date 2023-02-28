@@ -24,6 +24,20 @@ func (f Fresh) String() string {
 	return fmt.Sprintf("α%d", f.index)
 }
 
+type Site struct {
+	ttag
+	ssa.Value
+	Register bool
+}
+
+func (s Site) String() string {
+	if s.Register {
+		return s.Name()
+	}
+	return fmt.Sprintf("%s = %v", s.Name(), s.Value.String())
+}
+
+
 type PointsTo struct {
 	ttag
 	x *Term

@@ -333,17 +333,6 @@ DONE:
 	} */
 
 	return ctx.result(cg)
-	/* return func(x ssa.Value) []ssa.Value {
-		p := ptsto(ctx.sterm(x, true))
-		ret := make([]ssa.Value, len(p))
-		for i, y := range p {
-			if y.Register {
-				log.Panicf("%v points to register %v?", x, y)
-			}
-			ret[i] = y.Value
-		}
-		return ret
-	}, cg */
 }
 
 func (ctx *aContext) processFunc(fun *ssa.Function) {
