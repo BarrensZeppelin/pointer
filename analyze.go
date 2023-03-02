@@ -19,7 +19,7 @@ func init() {
 	log.SetFlags(log.Ltime | log.Lshortfile)
 }
 
-var ErrNotImplemented = errors.New("Not implemented")
+var ErrNotImplemented = errors.New("not implemented")
 
 type aContext struct {
 	prog *ssa.Program

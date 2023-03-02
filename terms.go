@@ -37,7 +37,6 @@ func (s Site) String() string {
 	return fmt.Sprintf("%s = %v", s.Name(), s.Value.String())
 }
 
-
 type PointsTo struct {
 	ttag
 	x *Term
@@ -176,7 +175,7 @@ func union(a, b *Term) {
 }
 
 func unificationError(a, b termTag) error {
-	return fmt.Errorf("Unable to unify terms of type %T and %T", a, b)
+	return fmt.Errorf("unable to unify terms of type %T and %T", a, b)
 }
 
 func (ctx *aContext) discoverFun(fun *ssa.Function) {
@@ -423,18 +422,15 @@ func (ctx *aContext) unify(a, b *Term) {
 	}
 }
 
-func (ctx *aContext) mkTerm(t Site) *Term {
-	if term, found := ctx.varToTerm[t]; found {
-		return term
-	}
-	term := T(t)
-	ctx.varToTerm[t] = term
-	return term
-}
-
 func (ctx *aContext) sterm(v ssa.Value, reg bool) *Term {
 	site := Site{Value: v, Register: reg}
-	return ctx.mkTerm(site)
+	if term, found := ctx.varToTerm[site]; found {
+		return term
+	}
+
+	term := T(site)
+	ctx.varToTerm[site] = term
+	return term
 }
 
 var mkFresh = func() func() *Term {
