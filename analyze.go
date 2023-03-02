@@ -34,6 +34,11 @@ type aContext struct {
 
 	// Shared type hasher
 	tHasher typeutil.Hasher
+
+	// Some memoized function pointers
+	time_startTimer,
+	godebug_setUpdate,
+	sync_runtime_registerPoolCleanup *ssa.Function
 }
 
 func (ctx *aContext) eval(v ssa.Value) *Term {
@@ -49,13 +54,15 @@ func (ctx *aContext) eval(v ssa.Value) *Term {
 		return T(PointsTo{x: ctx.sterm(v)})
 
 	default:
-		switch v.(type) {
-		case *ssa.Parameter, *ssa.FreeVar:
-		default:
-			if v.Name()[0] != 't' {
-				log.Panicf("What??? %s %v", v.Name(), v)
-			}
-		}
+		/*
+			// Helpful to prevent bugs during development, but it's a bit expensive.
+			switch v.(type) {
+			case *ssa.Parameter, *ssa.FreeVar:
+			default:
+				if v.Name()[0] != 't' {
+					log.Panicf("What??? %s %v", v.Name(), v)
+				}
+			} */
 
 		/* if !PointerLike(v.Type()) {
 			return mkFresh()
@@ -84,6 +91,17 @@ func Analyze(config AnalysisConfig) Result {
 		varToTerm: make(map[ssa.Value]*Term),
 		panicVar:  mkFresh(),
 		tHasher:   typeutil.MakeHasher(),
+	}
+
+	if godebug := prog.ImportedPackage("internal/godebug"); godebug != nil {
+		ctx.godebug_setUpdate = godebug.Func("setUpdate")
+	}
+	if sync := prog.ImportedPackage("sync"); sync != nil {
+		ctx.sync_runtime_registerPoolCleanup =
+			sync.Func("sync.runtime_registerPoolCleanup")
+	}
+	if time := prog.ImportedPackage("time"); time != nil {
+		ctx.time_startTimer = time.Func("startTimer")
 	}
 
 	mains := ssautil.MainPackages(prog.AllPackages())
@@ -193,20 +211,19 @@ func Analyze(config AnalysisConfig) Result {
 							callees = append(callees, fun)
 						})
 				} else if _, isBuiltin := v.(*ssa.Builtin); !isBuiltin {
-					if sc := common.StaticCallee(); sc != nil {
-						switch sc.String() {
-						case "time.startTimer":
-							argT := sc.Signature.Params().At(0).Type().(*types.Pointer)
-							runtimeTimerT := argT.Elem().Underlying().(*types.Struct)
+					if sc := common.StaticCallee(); sc != nil &&
+						sc == ctx.time_startTimer {
 
-							fI := FieldIndex(runtimeTimerT, "f")
-							arg := find(ctx.eval(common.Args[0]))
-							strukt := find(arg.x.(PointsTo).x).x.(Struct)
-							closure := find(strukt.fields[fI]).x.(Closure)
+						argT := sc.Signature.Params().At(0).Type().(*types.Pointer)
+						runtimeTimerT := argT.Elem().Underlying().(*types.Struct)
 
-							for fun := range closure.funs {
-								callgraph.AddEdge(cg.CreateNode(sc), nil, cg.CreateNode(fun))
-							}
+						fI := FieldIndex(runtimeTimerT, "f")
+						arg := find(ctx.eval(common.Args[0]))
+						strukt := find(arg.x.(PointsTo).x).x.(Struct)
+						closure := find(strukt.fields[fI]).x.(Closure)
+
+						for fun := range closure.funs {
+							callgraph.AddEdge(cg.CreateNode(sc), nil, cg.CreateNode(fun))
 						}
 					}
 
@@ -375,9 +392,9 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 			return false
 		}
 
-		switch sc.String() {
-		case "internal/godebug.setUpdate",
-			"sync.runtime_registerPoolCleanup":
+		switch {
+		case sc == ctx.godebug_setUpdate,
+			sc == ctx.sync_runtime_registerPoolCleanup:
 			// Immediately treat argument as called
 			f := common.Args[0]
 			args := make([]*Term, f.Type().(*types.Signature).Params().Len())
@@ -394,7 +411,7 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 				}))
 			return true
 
-		case "time.startTimer":
+		case sc == ctx.time_startTimer:
 			argT := sc.Signature.Params().At(0).Type()
 			runtimeTimerT := argT.(*types.Pointer).Elem().Underlying().(*types.Struct)
 
@@ -416,9 +433,6 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 
 			return true
 
-		/* case "runtime.SetFinalizer":
-		log.Println(call.Parent(), call, common.Args[1], find(ctx.eval(common.Args[1])))
-		return false */
 		default:
 			return false
 		}
