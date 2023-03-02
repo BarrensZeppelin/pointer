@@ -189,8 +189,10 @@ func TestAnalyze(t *testing.T) {
 		})
 		x, y := ptres.Pointer(allocs[0]), ptres.Pointer(allocs[1])
 
-		assert.Len(t, slices.Map(x.PointsTo(), PPValue), 1, "x should only point to one allocation site")
-		assert.Len(t, slices.Map(y.PointsTo(), PPValue), 1, "y should only point to one allocation site")
+		assert.Len(t, slices.Map(x.PointsTo(), PPValue), 1,
+			"x should only point to one allocation site")
+		assert.Len(t, slices.Map(y.PointsTo(), PPValue), 1,
+			"y should only point to one allocation site")
 		assert.False(t, x.MayAlias(y), "x and y should not alias")
 	})
 }

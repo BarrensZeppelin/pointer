@@ -30,28 +30,18 @@ func (r *Result) Pointer(v ssa.Value) *Pointer {
 		return &Pointer{r, mkFresh()}
 	}
 
-	return &Pointer{r, s}
+	return &Pointer{r, find(s)}
 }
 
 func (p *Pointer) MayAlias(o *Pointer) bool {
-	if p, ok := find(p.term).x.(PointsTo); ok {
-		if p2, ok := find(o.term).x.(PointsTo); ok {
-			return find(p.x) == find(p2.x)
-		}
-	}
-
-	return false
+	_, isPtr := p.term.x.(PointsTo)
+	return isPtr && p.term == o.term
 }
 
 func (p *Pointer) PointsTo() []ssa.Value {
 	switch t := find(p.term).x.(type) {
 	case PointsTo:
-		ch := p.res.children[find(t.x)]
-		r := make([]ssa.Value, len(ch))
-		for i, s := range ch {
-			r[i] = s.Value
-		}
-		return r
+		return t.sites
 	case Closure:
 		ret := make([]ssa.Value, 0, len(t.funs))
 		for fun := range t.funs {

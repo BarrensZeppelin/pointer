@@ -336,6 +336,15 @@ DONE:
 }
 
 func (ctx *aContext) processFunc(fun *ssa.Function) {
+	// Helper function for constructing a points-to term with a singleton set
+	// for the sites field.
+	alloc := func(site ssa.Value, content *Term) *Term {
+		return T(PointsTo{
+			x:     content,
+			sites: []ssa.Value{site},
+		})
+	}
+
 	handleBuiltin := func(call ssa.CallInstruction) {
 		common := call.Common()
 		rval := mkFresh()
@@ -345,9 +354,7 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 
 		switch common.Value.Name() {
 		case "append":
-			it := ctx.sterm(call.Value(), false)
-			ctx.unify(it, T(Array{x: mkFresh()}))
-			ctx.unify(rval, T(PointsTo{x: it}))
+			ctx.unify(rval, alloc(call.Value(), T(Array{x: mkFresh()})))
 			ctx.unify(rval, ctx.eval(common.Args[0]))
 			ctx.unify(rval, ctx.eval(common.Args[1]))
 		case "recover":
@@ -458,13 +465,10 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 				reg := ctx.sterm(t, true)
 				switch t := t.(type) {
 				case *ssa.Alloc:
-					it := ctx.sterm(t, false)
-					ctx.unify(reg, T(PointsTo{x: it}))
+					ctx.unify(reg, alloc(t, mkFresh()))
 
 				case *ssa.MakeChan:
-					it := ctx.sterm(t, false)
-					ctx.unify(reg, T(PointsTo{x: it}))
-					ctx.unify(it, T(Chan{payload: mkFresh()}))
+					ctx.unify(reg, alloc(t, T(Chan{payload: mkFresh()})))
 
 				case *ssa.MakeClosure:
 					funs := map[*ssa.Function][]*Term{
@@ -473,23 +477,16 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 					ctx.unify(reg, T(Closure{funs: funs, rval: mkFresh()}))
 
 				case *ssa.MakeSlice:
-					it := ctx.sterm(t, false)
-					ctx.unify(reg, T(PointsTo{x: it}))
-					ctx.unify(it, T(Array{x: mkFresh()}))
+					ctx.unify(reg, alloc(t, T(Array{x: mkFresh()})))
 
 				case *ssa.MakeInterface:
-					it := ctx.sterm(t, false)
-
 					itf := ctx.zeroTermForType(t.Type()).(Interface)
 					itf.contents.Set(t.X.Type(), ctx.eval(t.X))
 
-					ctx.unify(reg, T(PointsTo{x: it}))
-					ctx.unify(it, T(itf))
+					ctx.unify(reg, alloc(t, T(itf)))
 
 				case *ssa.MakeMap:
-					it := ctx.sterm(t, false)
-					ctx.unify(reg, T(PointsTo{x: it}))
-					ctx.unify(it, T(Map{keys: mkFresh(), values: mkFresh()}))
+					ctx.unify(reg, alloc(t, T(Map{keys: mkFresh(), values: mkFresh()})))
 
 				case *ssa.UnOp:
 					rhs := ctx.eval(t.X)
@@ -519,13 +516,10 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 						}
 
 						// Treat conversion from unsafe pointer to pointer as a new allocation
-						it := ctx.sterm(t, false)
-						ctx.unify(reg, T(PointsTo{x: it}))
+						ctx.unify(reg, alloc(t, mkFresh()))
 
 					case *types.Slice:
-						it := ctx.sterm(t, false)
-						ctx.unify(reg, T(PointsTo{x: it}))
-						ctx.unify(it, T(Array{x: mkFresh()}))
+						ctx.unify(reg, alloc(t, T(Array{x: mkFresh()})))
 					}
 
 				case *ssa.ChangeType:

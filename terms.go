@@ -39,7 +39,10 @@ func (s Site) String() string {
 
 type PointsTo struct {
 	ttag
+	// The term representing the pointed to objects
 	x *Term
+	// List of allocation sites of objects the pointer can point to
+	sites []ssa.Value
 }
 
 func (c PointsTo) String() string {
@@ -242,6 +245,19 @@ func (ctx *aContext) unify(a, b *Term) {
 			union(b, a)
 		case PointsTo:
 			union(a, b)
+
+			if x.sites != nil {
+				if y.sites == nil {
+					y.sites = x.sites
+				} else if len(x.sites) < len(y.sites) {
+					y.sites = append(y.sites, x.sites...)
+				} else {
+					y.sites = append(x.sites, y.sites...)
+				}
+
+				b.x = y
+			}
+
 			ctx.unify(x.x, y.x)
 		default:
 			panic(unificationError(x, y))
