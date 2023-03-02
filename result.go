@@ -11,8 +11,7 @@ type Result struct {
 	Reachable map[*ssa.Function]bool
 	CallGraph *callgraph.Graph
 
-	children  map[*Term][]Site
-	varToTerm map[Site]*Term
+	varToTerm map[ssa.Value]*Term
 }
 
 type Pointer struct {
@@ -25,7 +24,7 @@ func (r *Result) Pointer(v ssa.Value) *Pointer {
 		panic(fmt.Errorf("The type of %v is not pointer-like", v))
 	}
 
-	s, ok := r.varToTerm[Site{Value: v, Register: true}]
+	s, ok := r.varToTerm[v]
 	if !ok {
 		return &Pointer{r, mkFresh()}
 	}
@@ -54,19 +53,18 @@ func (p *Pointer) PointsTo() []ssa.Value {
 }
 
 func (ctx *aContext) result(callgraph *callgraph.Graph) Result {
-	children := map[*Term][]Site{}
+	/* children := map[*Term][]Site{}
 	for site, term := range ctx.varToTerm {
 		if !site.Register {
 			term = find(term)
 			children[term] = append(children[term], site)
 		}
-	}
+	} */
 
 	return Result{
 		Reachable: ctx.visited,
 		CallGraph: callgraph,
 
-		children:  children,
 		varToTerm: ctx.varToTerm,
 	}
 }

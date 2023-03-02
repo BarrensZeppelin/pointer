@@ -24,7 +24,7 @@ func (f Fresh) String() string {
 	return fmt.Sprintf("α%d", f.index)
 }
 
-type Site struct {
+/* type Site struct {
 	ttag
 	ssa.Value
 	Register bool
@@ -35,7 +35,7 @@ func (s Site) String() string {
 		return s.Name()
 	}
 	return fmt.Sprintf("%s = %v", s.Name(), s.Value.String())
-}
+} */
 
 type PointsTo struct {
 	ttag
@@ -230,18 +230,18 @@ func (ctx *aContext) unify(a, b *Term) {
 	// applied before calling unify recursively!
 
 	switch x := a.x.(type) {
-	case Site:
+	/* case Site:
 		if _, yIsSite := b.x.(Site); yIsSite {
 			union(a, b)
 		} else {
 			// Swap order of arguments
 			ctx.unify(b, a)
-		}
+		} */
 	case Fresh:
 		union(a, b)
 	case PointsTo:
 		switch y := b.x.(type) {
-		case Site, Fresh:
+		case Fresh:
 			union(b, a)
 		case PointsTo:
 			union(a, b)
@@ -264,7 +264,7 @@ func (ctx *aContext) unify(a, b *Term) {
 		}
 	case Chan:
 		switch y := b.x.(type) {
-		case Site:
+		case Fresh:
 			union(b, a)
 		case Chan:
 			union(a, b)
@@ -274,7 +274,7 @@ func (ctx *aContext) unify(a, b *Term) {
 		}
 	case Array:
 		switch y := b.x.(type) {
-		case Site, Fresh:
+		case Fresh:
 			union(b, a)
 		case Array:
 			union(a, b)
@@ -284,7 +284,7 @@ func (ctx *aContext) unify(a, b *Term) {
 		}
 	case Map:
 		switch y := b.x.(type) {
-		case Site, Fresh:
+		case Fresh:
 			union(b, a)
 		case Map:
 			union(a, b)
@@ -295,7 +295,7 @@ func (ctx *aContext) unify(a, b *Term) {
 		}
 	case Struct:
 		switch y := b.x.(type) {
-		case Site, Fresh:
+		case Fresh:
 			union(b, a)
 		case Struct:
 			union(a, b)
@@ -310,7 +310,7 @@ func (ctx *aContext) unify(a, b *Term) {
 		}
 	case Closure:
 		switch y := b.x.(type) {
-		case Site, Fresh:
+		case Fresh:
 			union(b, a)
 		case Closure:
 			union(a, b)
@@ -370,7 +370,7 @@ func (ctx *aContext) unify(a, b *Term) {
 		}
 	case Interface:
 		switch y := b.x.(type) {
-		case Site:
+		case Fresh:
 			union(b, a)
 		case Interface:
 			if x.contents.Len() > y.contents.Len() {
@@ -438,13 +438,14 @@ func (ctx *aContext) unify(a, b *Term) {
 	}
 }
 
-func (ctx *aContext) sterm(v ssa.Value, reg bool) *Term {
-	site := Site{Value: v, Register: reg}
+// sterm returns the term containing the constraint variable for the given ssa
+// value. The constructed terms are memoized in a map.
+func (ctx *aContext) sterm(site ssa.Value) *Term {
 	if term, found := ctx.varToTerm[site]; found {
 		return term
 	}
 
-	term := T(site)
+	term := mkFresh()
 	ctx.varToTerm[site] = term
 	return term
 }

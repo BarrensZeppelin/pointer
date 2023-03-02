@@ -27,7 +27,7 @@ type aContext struct {
 	queue   queue.Queue[*ssa.Function]
 	visited map[*ssa.Function]bool
 
-	varToTerm map[Site]*Term
+	varToTerm map[ssa.Value]*Term
 
 	// Constraint var for the global panic argument
 	panicVar *Term
@@ -46,7 +46,7 @@ func (ctx *aContext) eval(v ssa.Value) *Term {
 		return T(Closure{funs: funs, rval: mkFresh()})
 
 	case *ssa.Global:
-		return T(PointsTo{x: ctx.sterm(v, true)})
+		return T(PointsTo{x: ctx.sterm(v)})
 
 	default:
 		switch v.(type) {
@@ -61,7 +61,7 @@ func (ctx *aContext) eval(v ssa.Value) *Term {
 			return mkFresh()
 		} */
 
-		return ctx.sterm(v, true)
+		return ctx.sterm(v)
 	}
 }
 
@@ -81,7 +81,7 @@ func Analyze(config AnalysisConfig) Result {
 	ctx := &aContext{
 		prog:      prog,
 		visited:   make(map[*ssa.Function]bool),
-		varToTerm: make(map[Site]*Term),
+		varToTerm: make(map[ssa.Value]*Term),
 		panicVar:  mkFresh(),
 		tHasher:   typeutil.MakeHasher(),
 	}
@@ -349,7 +349,7 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 		common := call.Common()
 		rval := mkFresh()
 		if v := call.Value(); v != nil {
-			rval = ctx.sterm(v, true)
+			rval = ctx.sterm(v)
 		}
 
 		switch common.Value.Name() {
@@ -432,7 +432,7 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 
 				rval := mkFresh()
 				if v := t.Value(); v != nil {
-					rval = ctx.sterm(v, true)
+					rval = ctx.sterm(v)
 				}
 
 				if common.IsInvoke() {
@@ -462,7 +462,7 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 					continue
 				} */
 
-				reg := ctx.sterm(t, true)
+				reg := ctx.sterm(t)
 				switch t := t.(type) {
 				case *ssa.Alloc:
 					ctx.unify(reg, alloc(t, mkFresh()))
