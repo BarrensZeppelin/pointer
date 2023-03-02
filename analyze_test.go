@@ -132,28 +132,67 @@ func checkSoundness(t *testing.T, prog *ssa.Program) {
 }
 
 func TestAnalyze(t *testing.T) {
-	pkgs, err := pkgutil.LoadPackagesFromSource(`
-	package main
+	t.Run("Example", func(t *testing.T) {
+		pkgs, err := pkgutil.LoadPackagesFromSource(`
+			package main
 
-	func ubool() bool
+			func ubool() bool
 
-	func main() {
-		x := new(*int)
-		*x = new(int)
-		if ubool() {
-			*x = new(int)
+			func main() {
+				x := new(*int)
+				*x = new(int)
+				if ubool() {
+					*x = new(int)
+				}
+				y := *x
+				*y = 10
+				println(y)
+			}`)
+
+		require.Nil(t, err)
+
+		prog, _ := ssautil.AllPackages(pkgs, ssa.SanityCheckFunctions)
+		prog.Build()
+
+		checkSoundness(t, prog)
+	})
+
+	t.Run("SpuriousPointsTo", func(t *testing.T) {
+		pkgs, err := pkgutil.LoadPackagesFromSource(`
+			package main
+			func ubool() bool
+			func main() {
+				x := new(*int)
+				y := new(*int)
+				z := *x
+				if ubool() { z = *y }
+				println(z)
+			}`)
+
+		require.Nil(t, err)
+
+		prog, spkgs := ssautil.AllPackages(pkgs, ssa.SanityCheckFunctions)
+		prog.Build()
+
+		mainPkg := spkgs[0]
+		allocs := []*ssa.Alloc{}
+		for _, insn := range mainPkg.Func("main").Blocks[0].Instrs {
+			if alloc, ok := insn.(*ssa.Alloc); ok {
+				allocs = append(allocs, alloc)
+			}
 		}
-		y := *x
-		*y = 10
-		println(y)
-	}`)
 
-	require.Nil(t, err)
+		require.Len(t, allocs, 2)
 
-	prog, _ := ssautil.AllPackages(pkgs, ssa.SanityCheckFunctions)
-	prog.Build()
+		ptres := pointer.Analyze(pointer.AnalysisConfig{
+			Program: prog,
+		})
+		x, y := ptres.Pointer(allocs[0]), ptres.Pointer(allocs[1])
 
-	checkSoundness(t, prog)
+		assert.Len(t, slices.Map(x.PointsTo(), PPValue), 1, "x should only point to one allocation site")
+		assert.Len(t, slices.Map(y.PointsTo(), PPValue), 1, "y should only point to one allocation site")
+		assert.False(t, x.MayAlias(y), "x and y should not alias")
+	})
 }
 
 func TestGoatExamples(t *testing.T) {
