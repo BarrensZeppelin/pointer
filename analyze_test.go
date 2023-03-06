@@ -208,7 +208,7 @@ func TestGoatExamples(t *testing.T) {
 	}
 
 	config := &packages.Config{
-		Mode:  packages.LoadAllSyntax,
+		Mode:  pkgutil.LoadMode,
 		Tests: true,
 		Dir:   "",
 		Env: append(os.Environ(), "GO111MODULE=off",

@@ -7,10 +7,15 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
+// Should be equivalent to packages.LoadAllSyntax (which is deprecated)
+const LoadMode = packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedTypes |
+	packages.NeedTypesSizes | packages.NeedImports | packages.NeedName |
+	packages.NeedFiles | packages.NeedCompiledGoFiles | packages.NeedDeps
+
 func LoadPackagesFromSource(source string) ([]*packages.Package, error) {
 	// We use the Overlay mechanism to allow the tool to load a non-existent file.
 	config := &packages.Config{
-		Mode:  packages.LoadAllSyntax,
+		Mode:  LoadMode,
 		Tests: false,
 		Dir:   "",
 		Env:   append(os.Environ(), "GO111MODULE=off", "GOPATH=/fake"),
