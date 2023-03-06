@@ -41,8 +41,9 @@ type PointsTo struct {
 	ttag
 	// The term representing the pointed to objects
 	x *Term
-	// List of allocation sites of objects the pointer can point to
-	sites []ssa.Value
+	// List of points-to "pre-" constraints collected during solving.
+	// These are used afterwards to reconstruct the points-to relation.
+	preps []prePTag
 }
 
 func (c PointsTo) String() string {
@@ -246,13 +247,13 @@ func (ctx *aContext) unify(a, b *Term) {
 		case PointsTo:
 			union(a, b)
 
-			if x.sites != nil {
-				if y.sites == nil {
-					y.sites = x.sites
-				} else if len(x.sites) < len(y.sites) {
-					y.sites = append(y.sites, x.sites...)
+			if x.preps != nil {
+				if y.preps == nil {
+					y.preps = x.preps
+				} else if len(x.preps) < len(y.preps) {
+					y.preps = append(y.preps, x.preps...)
 				} else {
-					y.sites = append(x.sites, y.sites...)
+					y.preps = append(x.preps, y.preps...)
 				}
 
 				b.x = y

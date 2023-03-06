@@ -2,12 +2,13 @@ package pointer_test
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/BarrensZeppelin/pointer"
+	"github.com/BarrensZeppelin/pointer/internal/maps"
 	"github.com/BarrensZeppelin/pointer/pkgutil"
 	"github.com/BarrensZeppelin/pointer/slices"
 	"github.com/stretchr/testify/assert"
@@ -19,12 +20,50 @@ import (
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
+func init() {
+	// Set up logging
+	log.SetFlags(log.Ltime | log.Lshortfile)
+}
+
+// PPValue pretty-prints the given value.
 func PPValue(v ssa.Value) string {
 	return fmt.Sprintf("%v: %s = %v", v.Parent(), v.Name(), v)
 }
 
-func PPSet(l []ssa.Value) string {
-	return "[" + strings.Join(slices.Map(l, PPValue), ", ") + "]"
+// compPtr is a common format for comparing pointers returned from pointer
+// analyses. It contains the allocation site and access path.
+type compPtr struct {
+	site ssa.Value
+	path string
+}
+
+func (cp compPtr) String() string {
+	return PPValue(cp.site) + cp.path
+}
+
+// toCompPtrs extract a list of compPtrs from the points-to relation of the
+// steensgaard analysis.
+func toCompPtrs(p pointer.Pointer) []compPtr {
+	pset := p.PointsTo()
+	res := make([]compPtr, len(pset))
+	for i, p := range pset {
+		res[i] = compPtr{p.Site(), p.Path()}
+	}
+	return res
+}
+
+// andersenToCompPtrs extract a list of compPtrs from the points-to relation of
+// the andersen analysis. Only pointers to objects with reachable allocation
+// sites are returned.
+func andersenToCompPtrs(p gopointer.Pointer, reachable map[*ssa.Function]bool) []compPtr {
+	labels := p.PointsTo().Labels()
+	res := make([]compPtr, 0, len(labels))
+	for _, label := range labels {
+		if v := label.Value(); v != nil && reachable[v.Parent()] {
+			res = append(res, compPtr{v, label.Path()})
+		}
+	}
+	return res
 }
 
 func checkSoundness(t *testing.T, prog *ssa.Program) {
@@ -39,7 +78,7 @@ func checkSoundness(t *testing.T, prog *ssa.Program) {
 		BuildCallGraph: true,
 	}
 
-	for fun := range ssautil.AllFunctions(prog) {
+	for fun := range ptres.Reachable {
 		for _, param := range fun.Params {
 			if pointer.PointerLike(param.Type()) {
 				pconfig.AddQuery(param)
@@ -98,27 +137,10 @@ func checkSoundness(t *testing.T, prog *ssa.Program) {
 	}
 
 	for reg, ptset := range res.Queries {
-		if _, found := cg.Nodes[reg.Parent()]; !found {
-			continue
-		}
+		pmap := maps.FromKeys(toCompPtrs(ptres.Pointer(reg)))
+		flattened := andersenToCompPtrs(ptset, ptres.Reachable)
 
-		pset := ptres.Pointer(reg).PointsTo()
-		pmap := make(map[ssa.Value]struct{}, len(pset))
-		for _, p := range pset {
-			pmap[p] = struct{}{}
-		}
-
-		flattened := []ssa.Value{}
-		for _, label := range ptset.PointsTo().Labels() {
-			// TODO: Our ptsto function doesn't work for subelements yet...
-			if v := label.Value(); v != nil && label.Path() == "" {
-				if _, reachable := cg.Nodes[v.Parent()]; reachable {
-					flattened = append(flattened, v)
-				}
-			}
-		}
-
-		var missing []ssa.Value
+		var missing []compPtr
 		for _, p := range flattened {
 			if _, found := pmap[p]; !found {
 				missing = append(missing, p)
@@ -126,7 +148,7 @@ func checkSoundness(t *testing.T, prog *ssa.Program) {
 		}
 
 		if len(missing) != 0 {
-			t.Errorf("%s:\n%s\n⊈\n%s", PPValue(reg), PPSet(flattened), PPSet(pset))
+			t.Errorf("%s:\n%s\n⊈\n%s", reg, flattened, maps.Keys(pmap))
 		}
 	}
 }
@@ -189,9 +211,9 @@ func TestAnalyze(t *testing.T) {
 		})
 		x, y := ptres.Pointer(allocs[0]), ptres.Pointer(allocs[1])
 
-		assert.Len(t, slices.Map(x.PointsTo(), PPValue), 1,
+		assert.Len(t, toCompPtrs(x), 1,
 			"x should only point to one allocation site")
-		assert.Len(t, slices.Map(y.PointsTo(), PPValue), 1,
+		assert.Len(t, toCompPtrs(y), 1,
 			"y should only point to one allocation site")
 		assert.False(t, x.MayAlias(y), "x and y should not alias")
 	})

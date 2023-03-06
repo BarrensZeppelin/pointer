@@ -15,10 +15,6 @@ import (
 	"golang.org/x/tools/go/types/typeutil"
 )
 
-func init() {
-	log.SetFlags(log.Ltime | log.Lshortfile)
-}
-
 var ErrNotImplemented = errors.New("not implemented")
 
 type aContext struct {
@@ -358,7 +354,7 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 	alloc := func(site ssa.Value, content *Term) *Term {
 		return T(PointsTo{
 			x:     content,
-			sites: []ssa.Value{site},
+			preps: []prePTag{prePSite{site: site}},
 		})
 	}
 
@@ -550,8 +546,12 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 
 				case *ssa.IndexAddr:
 					fresh := mkFresh()
-					ctx.unify(ctx.eval(t.X), T(PointsTo{x: T(Array{x: fresh})}))
-					ctx.unify(reg, T(PointsTo{x: fresh}))
+					base := ctx.eval(t.X)
+					ctx.unify(base, T(PointsTo{x: T(Array{x: fresh})}))
+					ctx.unify(reg, T(PointsTo{
+						x:     fresh,
+						preps: []prePTag{prePAccess{base: base, field: -1}},
+					}))
 
 				case *ssa.Index:
 					switch t.X.Type().Underlying().(type) {
@@ -568,8 +568,12 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 					fresh := mkFresh()
 					fStruct.fields[t.Field] = fresh
 
-					ctx.unify(ctx.eval(t.X), T(PointsTo{x: T(fStruct)}))
-					ctx.unify(reg, T(PointsTo{x: fresh}))
+					base := ctx.eval(t.X)
+					ctx.unify(base, T(PointsTo{x: T(fStruct)}))
+					ctx.unify(reg, T(PointsTo{
+						x:     fresh,
+						preps: []prePTag{prePAccess{base: base, field: t.Field}},
+					}))
 
 				case *ssa.Field:
 					fStruct := ctx.zeroTermForType(t.X.Type()).(Struct)
