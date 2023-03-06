@@ -21,7 +21,7 @@ type Label interface {
 	Site() ssa.Value
 	// Returns an access path to the object that is compatible with the paths
 	// provided for labels in the Go team implementation of Andersen's pointer
-	// analysis. Specifically field names are from ssa indices.
+	// analysis. Specifically field names are resolved from ssa indices.
 	Path() string
 	// Returns the type of a pointer pointing to the object denoted by the
 	// label. (Label).Type().Underlying() == (*types.Pointer) except for
