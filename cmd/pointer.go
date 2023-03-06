@@ -1,8 +1,10 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"os"
+	"runtime/pprof"
 
 	"github.com/BarrensZeppelin/pointer"
 	"github.com/BarrensZeppelin/pointer/pkgutil"
@@ -11,15 +13,37 @@ import (
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
+var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
+var dir = flag.String("dir", "", "alternative directory to run the go build tool in")
+
 func main() {
-	dir := os.Args[1]
-	query := os.Args[2]
+	flag.Parse()
+
+	if flag.NArg() == 0 {
+		log.Fatal("Specify a package query on the command line")
+	}
+
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal("could not create CPU profile: ", err)
+		}
+		defer func() {
+			if err := f.Close(); err != nil {
+				log.Fatal("Failed to close", f)
+			}
+		}()
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatal("could not start CPU profile: ", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
 
 	pkgs, err := pkgutil.LoadPackagesWithConfig(&packages.Config{
-		Mode:  packages.LoadAllSyntax,
+		Mode:  pkgutil.LoadMode,
 		Tests: true,
-		Dir:   dir,
-	}, query)
+		Dir:   *dir,
+	}, flag.Args()...)
 
 	if err != nil {
 		log.Fatalf("Loading packages failed: %v", err)
@@ -32,9 +56,9 @@ func main() {
 
 	log.Println("Built packages")
 
-	_, cg := pointer.Analyze(pointer.AnalysisConfig{
+	res := pointer.Analyze(pointer.AnalysisConfig{
 		Program: prog,
 	})
 
-	log.Printf("%d reachable functions", len(cg.Nodes))
+	log.Printf("%d reachable functions", len(res.Reachable))
 }
