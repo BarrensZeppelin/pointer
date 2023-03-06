@@ -133,15 +133,17 @@ func (i Interface) iterateCallees(
 ) {
 	recv := method.Type().(*types.Signature).Recv().Type().Underlying().(*types.Interface)
 	i.contents.Iterate(func(key types.Type, v any) {
-		// Method lookup is only based on name, not type, so we
-		// have to check whether the dynamic type implements the
-		// interface first.
-		if !types.Implements(key, recv) {
-			return
-		}
-
 		ms := prog.MethodSets.MethodSet(key)
-		if sel := ms.Lookup(method.Pkg(), method.Name()); sel != nil {
+		if sel := ms.Lookup(method.Pkg(), method.Name()); sel != nil &&
+			// Check that the selected method (selected on name only) has the
+			// correct type.
+			types.Identical(sel.Type(), method.Type()) {
+
+			// Make sure that the receiver actually implements the expected interface.
+			if !types.Implements(key, recv) {
+				return
+			}
+
 			fun := prog.MethodValue(sel)
 			f(fun, v.(*Term))
 		}
