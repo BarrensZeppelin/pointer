@@ -11,7 +11,6 @@ import (
 	"github.com/BarrensZeppelin/pointer/internal/slices"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/ssa/ssautil"
 	"golang.org/x/tools/go/types/typeutil"
 )
 
@@ -71,6 +70,12 @@ func (ctx *aContext) eval(v ssa.Value) *Term {
 type AnalysisConfig struct {
 	Program *ssa.Program
 
+	// Functions in this list will be treated as program entry points.
+	EntryFunctions []*ssa.Function
+	// Packages in this list will have their main & init functions treated as
+	// program entry points.
+	EntryPackages []*ssa.Package
+
 	// When TreatMethodsAsRoots is true, all methods of all types in
 	// prog.RuntimeTypes() are implicitly called.
 	// This is mainly useful for soundness comparison with the analysis in
@@ -100,13 +105,19 @@ func Analyze(config AnalysisConfig) Result {
 		ctx.time_startTimer = time.Func("startTimer")
 	}
 
-	mains := ssautil.MainPackages(prog.AllPackages())
-	for _, pkg := range mains {
+	var roots []*ssa.Function
+	for _, pkg := range config.EntryPackages {
 		for _, name := range [...]string{"main", "init"} {
 			if fun := pkg.Func(name); fun != nil {
 				ctx.discoverFun(fun)
+				roots = append(roots, fun)
 			}
 		}
+	}
+
+	for _, fun := range config.EntryFunctions {
+		ctx.discoverFun(fun)
+		roots = append(roots, fun)
 	}
 
 	if config.TreatMethodsAsRoots {
@@ -176,12 +187,8 @@ func Analyze(config AnalysisConfig) Result {
 	cg := callgraph.New(r)
 
 	// Add call edges for root function
-	for _, pkg := range mains {
-		for _, name := range [...]string{"main", "init"} {
-			if fun := pkg.Func(name); fun != nil {
-				callgraph.AddEdge(cg.CreateNode(r), nil, cg.CreateNode(fun))
-			}
-		}
+	for _, fun := range roots {
+		callgraph.AddEdge(cg.CreateNode(r), nil, cg.CreateNode(fun))
 	}
 
 	for fun := range ctx.visited {

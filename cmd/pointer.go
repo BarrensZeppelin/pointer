@@ -58,6 +58,7 @@ func main() {
 
 	res := pointer.Analyze(pointer.AnalysisConfig{
 		Program: prog,
+		EntryPackages: ssautil.MainPackages(prog.AllPackages()),
 	})
 
 	log.Printf("%d reachable functions", len(res.Reachable))

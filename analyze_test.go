@@ -67,14 +67,16 @@ func andersenToCompPtrs(p gopointer.Pointer, reachable map[*ssa.Function]bool) [
 }
 
 func checkSoundness(t *testing.T, prog *ssa.Program) {
+	mains := ssautil.MainPackages(prog.AllPackages())
 	ptres := pointer.Analyze(pointer.AnalysisConfig{
 		Program:             prog,
+		EntryPackages:       mains,
 		TreatMethodsAsRoots: true,
 	})
 	cg := ptres.CallGraph
 
 	pconfig := &gopointer.Config{
-		Mains:          ssautil.MainPackages(prog.AllPackages()),
+		Mains:          mains,
 		BuildCallGraph: true,
 	}
 
@@ -207,7 +209,8 @@ func TestAnalyze(t *testing.T) {
 		require.Len(t, allocs, 2)
 
 		ptres := pointer.Analyze(pointer.AnalysisConfig{
-			Program: prog,
+			Program:       prog,
+			EntryPackages: spkgs,
 		})
 		x, y := ptres.Pointer(allocs[0]), ptres.Pointer(allocs[1])
 
