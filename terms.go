@@ -5,7 +5,7 @@ import (
 	"go/types"
 	"log"
 
-	"github.com/BarrensZeppelin/pointer/slices"
+	"github.com/BarrensZeppelin/pointer/internal/slices"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/types/typeutil"
 )

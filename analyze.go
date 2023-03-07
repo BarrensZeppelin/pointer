@@ -8,7 +8,7 @@ import (
 	"log"
 
 	"github.com/BarrensZeppelin/pointer/internal/queue"
-	"github.com/BarrensZeppelin/pointer/slices"
+	"github.com/BarrensZeppelin/pointer/internal/slices"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"

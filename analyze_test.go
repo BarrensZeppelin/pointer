@@ -9,8 +9,8 @@ import (
 
 	"github.com/BarrensZeppelin/pointer"
 	"github.com/BarrensZeppelin/pointer/internal/maps"
+	"github.com/BarrensZeppelin/pointer/internal/slices"
 	"github.com/BarrensZeppelin/pointer/pkgutil"
-	"github.com/BarrensZeppelin/pointer/slices"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/tools/go/callgraph"
