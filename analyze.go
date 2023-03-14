@@ -217,13 +217,14 @@ func Analyze(config AnalysisConfig) Result {
 
 				var callees []*ssa.Function
 				if common.IsInvoke() {
-					pt := find(ctx.eval(v)).x.(PointsTo)
-					find(pt.x).x.(Interface).iterateCallees(
-						ctx.prog,
-						common.Method,
-						func(fun *ssa.Function, _ *Term) {
-							callees = append(callees, fun)
-						})
+					if pt, ok := find(ctx.eval(v)).x.(PointsTo); ok {
+						find(pt.x).x.(Interface).iterateCallees(
+							ctx.prog,
+							common.Method,
+							func(fun *ssa.Function, _ *Term) {
+								callees = append(callees, fun)
+							})
+					}
 				} else if _, isBuiltin := v.(*ssa.Builtin); !isBuiltin {
 					if sc := common.StaticCallee(); sc != nil &&
 						sc == ctx.time_startTimer {
@@ -241,7 +242,7 @@ func Analyze(config AnalysisConfig) Result {
 						}
 					}
 
-					closure := find(ctx.eval(v)).x.(Closure)
+					closure, _ := find(ctx.eval(v)).x.(Closure)
 					for fun := range closure.funs {
 						callees = append(callees, fun)
 					}

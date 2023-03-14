@@ -204,6 +204,26 @@ func TestAnalyze(t *testing.T) {
 		checkSoundness(t, prog)
 	})
 
+	t.Run("NilCalls", func(t *testing.T) {
+		pkgs, err := pkgutil.LoadPackagesFromSource(`
+			package main
+			type I interface { f() }
+			func main() {
+				var f func()
+				f()
+				defer f()
+				var i I
+				i.f()
+			}`)
+
+		require.Nil(t, err)
+
+		prog, _ := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics|ssa.SanityCheckFunctions)
+		prog.Build()
+
+		checkSoundness(t, prog)
+	})
+
 	t.Run("SpuriousPointsTo", func(t *testing.T) {
 		pkgs, err := pkgutil.LoadPackagesFromSource(`
 			package main
