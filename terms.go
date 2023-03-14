@@ -186,6 +186,10 @@ func unificationError(a, b termTag) error {
 
 func (ctx *aContext) discoverFun(fun *ssa.Function) {
 	if !ctx.visited[fun] {
+		if fun.TypeParams().Len() > len(fun.TypeArgs()) {
+			log.Fatalf("%s: discovered uninstantiated call to generic function %s\n(build with ssa.InstantiateGenerics)\n", ctx.prog.Fset.Position(fun.Pos()), fun.String())
+		}
+
 		ctx.visited[fun] = true
 		ctx.queue.Push(fun)
 	}
@@ -234,12 +238,12 @@ func (ctx *aContext) unify(a, b *Term) {
 
 	switch x := a.x.(type) {
 	/* case Site:
-		if _, yIsSite := b.x.(Site); yIsSite {
-			union(a, b)
-		} else {
-			// Swap order of arguments
-			ctx.unify(b, a)
-		} */
+	if _, yIsSite := b.x.(Site); yIsSite {
+		union(a, b)
+	} else {
+		// Swap order of arguments
+		ctx.unify(b, a)
+	} */
 	case Fresh:
 		union(a, b)
 	case PointsTo:

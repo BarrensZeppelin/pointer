@@ -142,9 +142,10 @@ func Analyze(config AnalysisConfig) Result {
 		if runtime := prog.ImportedPackage("runtime"); runtime != nil {
 			fun := runtime.Func("SetFinalizer")
 
-			objT := T(ctx.zeroTermForType(fun.Params[0].Type()))
-			ctx.unify(ctx.eval(fun.Params[0]), T(PointsTo{x: objT}))
-			obj := find(objT).x.(Interface)
+			objIT := T(ctx.zeroTermForType(fun.Params[0].Type()))
+			objT := ctx.eval(fun.Params[0])
+			ctx.unify(objT, T(PointsTo{x: objIT}))
+			obj := find(objIT).x.(Interface)
 
 			if obj.contents.Len() == 0 {
 				break
@@ -166,19 +167,29 @@ func Analyze(config AnalysisConfig) Result {
 				}
 
 				pType := fSig.Params().At(0).Type()
-				obj.contents.Iterate(func(oType types.Type, v any) {
-					if !types.AssignableTo(oType, pType) {
-						return
-					}
-
+				if types.IsInterface(pType) {
 					ctx.unify(fTerm,
 						T(Closure{
 							called: true,
 							funs:   make(map[*ssa.Function][]*Term),
-							args:   []*Term{v.(*Term)},
+							args:   []*Term{objT},
 							rval:   mkFresh(),
 						}))
-				})
+				} else {
+					obj.contents.Iterate(func(oType types.Type, v any) {
+						if !types.AssignableTo(oType, pType) {
+							return
+						}
+
+						ctx.unify(fTerm,
+							T(Closure{
+								called: true,
+								funs:   make(map[*ssa.Function][]*Term),
+								args:   []*Term{v.(*Term)},
+								rval:   mkFresh(),
+							}))
+					})
+				}
 			})
 		}
 	}

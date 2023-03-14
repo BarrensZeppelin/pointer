@@ -181,6 +181,29 @@ func TestAnalyze(t *testing.T) {
 		checkSoundness(t, prog)
 	})
 
+	t.Run("SpookyFinalizer", func(t *testing.T) {
+		pkgs, err := pkgutil.LoadPackagesFromSource(`
+			package main
+
+			import "runtime"
+
+			func fin(x any) {
+				println(*x.(*int))
+			}
+
+			func main() {
+				x := new(int)
+				runtime.SetFinalizer(x, fin)
+			}`)
+
+		require.Nil(t, err)
+
+		prog, _ := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics|ssa.SanityCheckFunctions)
+		prog.Build()
+
+		checkSoundness(t, prog)
+	})
+
 	t.Run("SpuriousPointsTo", func(t *testing.T) {
 		pkgs, err := pkgutil.LoadPackagesFromSource(`
 			package main
@@ -195,7 +218,7 @@ func TestAnalyze(t *testing.T) {
 
 		require.Nil(t, err)
 
-		prog, spkgs := ssautil.AllPackages(pkgs, ssa.SanityCheckFunctions)
+		prog, spkgs := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics|ssa.SanityCheckFunctions)
 		prog.Build()
 
 		mainPkg := spkgs[0]
