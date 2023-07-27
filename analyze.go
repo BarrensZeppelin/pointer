@@ -319,51 +319,25 @@ func Analyze(config AnalysisConfig) Result {
 	}
 DONE:
 
-	/* children := map[*Term][]Site{}
-	for site, term := range ctx.varToTerm {
-		if !site.Register {
-			term = find(term)
-			children[term] = append(children[term], site)
-		}
-	}
+	result := ctx.result(cg)
 
-	ptsto := func(t *Term) []Site {
-		switch t := find(t).x.(type) {
-		case PointsTo:
-			return children[find(t.x)]
-		case Closure:
-			ret := []Site{}
-			for fun := range t.funs {
-				ret = append(ret, Site{Value: fun, Register: false})
-			}
-			return ret
-		default:
-			return nil
-		}
-	} */
-
-	/* fmt.Println("Heapres:")
-	for site, term := range ctx.varToTerm {
-		if !site.Register {
-			fmt.Printf("%s: %v\n", site, ptsto(term))
-			// fmt.Printf("%s: %v %v\n", site, find(term), ptsto(term))
-		}
-	}
-
-	fmt.Println("Panic res:", ptsto(panicVar))
-
-	for fun := range ctx.visited {
+	/* for fun := range ctx.visited {
 		fmt.Println("Result for", fun)
 		for bi, b := range fun.Blocks {
 			fmt.Printf("-- block %d\n", bi)
 			for _, i := range b.Instrs {
 				switch v := i.(type) {
 				case ssa.Value:
-					s := Site{Value: v, Register: true}
 					ptr := "Ø"
-					if term := ctx.varToTerm[s]; term != nil {
+					if term := ctx.varToTerm[v]; term != nil {
+						term = find(term)
 						// ptr = fmt.Sprintf("%q %v", ptsto(term), find(term))
-						ptr = fmt.Sprintf("%q", ptsto(term))
+						switch t := term.x.(type) {
+						case PointsTo, Closure:
+							ptr = fmt.Sprintf("%v", result.resolve(term))
+						default:
+							ptr = fmt.Sprintf("%T %v", t, t)
+						}
 					}
 
 					fmt.Printf("%s = %s\t\t%v\n", v.Name(), v, ptr)
@@ -374,7 +348,7 @@ DONE:
 		}
 	} */
 
-	return ctx.result(cg)
+	return result
 }
 
 func (ctx *aContext) processFunc(fun *ssa.Function) {

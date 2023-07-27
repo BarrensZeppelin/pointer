@@ -2,10 +2,12 @@ package pointer
 
 import (
 	"fmt"
+	"go/types"
 	"log"
 
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
+	"golang.org/x/tools/go/types/typeutil"
 )
 
 // Result exposes some public members and an API to query analysis results.
@@ -103,6 +105,30 @@ func (res *Result) resolve(t *Term) []Label {
 	default:
 		return nil
 	}
+}
+
+func (r *Result) DynamicTypes(v ssa.Value) (res *typeutil.Map) {
+	res = new(typeutil.Map)
+
+	if !types.IsInterface(v.Type()) {
+		panic(fmt.Errorf("the type of %v is not an interface", v))
+	}
+
+	term, found := r.varToTerm[v]
+	if !found {
+		return
+	}
+
+	for _, label := range r.resolve(find(term)) {
+		mkitf, ok := label.Site().(*ssa.MakeInterface)
+		if !ok {
+			panic(fmt.Errorf("%v points to non-MakeInterface: %v", v, label))
+		}
+
+		res.Set(mkitf.X.Type(), struct{}{})
+	}
+
+	return
 }
 
 func (ctx *aContext) result(callgraph *callgraph.Graph) Result {
