@@ -48,7 +48,7 @@ func (ctx *aContext) eval(v ssa.Value) *Term {
 	case *ssa.Alloc, *ssa.MakeChan, *ssa.MakeInterface,
 		*ssa.MakeMap, *ssa.MakeSlice, *ssa.Global:
 		return T(PointsTo{
-			x: ctx.sterm(v),
+			x:     ctx.sterm(v),
 			preps: []prePTag{prePSite{site: v}},
 		})
 

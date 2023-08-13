@@ -1,6 +1,7 @@
 package pointer_test
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -112,13 +113,65 @@ func TestGoPointerTests(t *testing.T) {
 				}
 			}
 
-			// TODO: Line mappings
+			lineMapping := map[string]string{}
+			for _, note := range notes {
+				pos := prog.Fset.Position(note.Pos)
+				arg := note.Args[0].(string)
+
+				if note.Name == "line" {
+					lineMapping[fmt.Sprintf("%s:%d", pos.Filename, pos.Line)] = arg
+				}
+			}
 
 			for _, note := range notes {
 				pos := prog.Fset.Position(note.Pos)
 				arg := note.Args[0].(string)
 
 				switch note.Name {
+				case "pointsto":
+					var expected, actual []string
+					exact := false
+					if arg != "" {
+						for _, g := range strings.Split(arg, " | ") {
+							if g == "..." {
+								exact = false
+								continue
+							}
+							expected = append(expected, g)
+						}
+					}
+
+					pa := printArgs[pos.Line]
+					require.NotNil(t, pa)
+
+					for _, v := range pa {
+						for _, label := range ptres.Pointer(v).PointsTo() {
+							name := labelString(label, lineMapping, prog)
+							actual = append(actual, name)
+						}
+					}
+
+					if exact {
+						assert.ElementsMatchf(t, actual, expected, "At %v", pos)
+					} else {
+						assert.Subsetf(t, actual, expected, "At %v", pos)
+					}
+
+					// for _, count := range expected {
+					// 	if !assert.LessOrEqualf(t, count, 0,
+					// 		"value does not alias these expected labels: %v",
+					// 		expected,
+					// 	) {
+					// 		t.Logf("Actual labels: %v", actual)
+					// 		break
+					// 	}
+					// }
+					// for _, count := range surplus {
+					// 	if !assert.LessOrEqualf(t, count, 0, "value may additionally alias these labels: %v", surplus) {
+					// 		break
+					// 	}
+					// }
+
 				case "types":
 					var expected typeutil.Map
 					exact := false
@@ -175,4 +228,71 @@ func isGenericBody(fn *ssa.Function) bool {
 		return fn.Synthetic == ""
 	}
 	return false
+}
+
+func labelString(l pointer.Label, lineMapping map[string]string, prog *ssa.Program) string {
+	s := l.Site()
+
+	str := func() string {
+		switch v := s.(type) {
+		// case nil:
+		// 	if l.obj.cgn != nil {
+		// 		// allocation by intrinsic or reflective operation
+		// 		s = fmt.Sprintf("<alloc in %s>", l.obj.cgn.fn)
+		// 	} else {
+		// 		s = "<unknown>" // should be unreachable
+		// 	}
+
+		case *ssa.Function, *ssa.Global:
+			return v.String()
+
+		case *ssa.Const:
+			return v.Name()
+
+		case *ssa.Alloc:
+			if v.Comment != "" {
+				return v.Comment
+			}
+
+			return "alloc"
+
+		case *ssa.Call:
+			// Currently only calls to append can allocate objects.
+			if v.Call.Value.(*ssa.Builtin).Object().Name() != "append" {
+				panic("unhandled *ssa.Call label: " + v.Name())
+			}
+			return "append"
+
+		case *ssa.MakeMap, *ssa.MakeChan, *ssa.MakeSlice, *ssa.Convert:
+			return strings.ToLower(strings.TrimPrefix(fmt.Sprintf("%T", v), "*ssa."))
+
+		case *ssa.MakeInterface:
+			// MakeInterface is usually implicit in Go source (so
+			// Pos()==0), and tagged objects may be allocated
+			// synthetically (so no *MakeInterface data).
+			return "makeinterface:" + v.X.Type().String()
+
+		default:
+			panic(fmt.Sprintf("unhandled object data type: %T", v))
+		}
+	}() + l.Path()
+
+	// Functions and Globals need no pos suffix,
+	// nor do allocations in intrinsic operations
+	// (for which we'll print the function name).
+	switch s.(type) {
+	case *ssa.Function, *ssa.Global:
+		return str
+	}
+
+	if pos := s.Pos(); pos != token.NoPos {
+		// Append the position, using a @line tag instead of a line number, if defined.
+		posn := prog.Fset.Position(pos)
+		s := fmt.Sprintf("%s:%d", posn.Filename, posn.Line)
+		if tag, ok := lineMapping[s]; ok {
+			return fmt.Sprintf("%s@%s:%d", str, tag, posn.Column)
+		}
+		str = fmt.Sprintf("%s@%s", str, posn)
+	}
+	return str
 }
