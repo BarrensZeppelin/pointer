@@ -187,7 +187,9 @@ func unificationError(a, b termTag) error {
 func (ctx *aContext) discoverFun(fun *ssa.Function) {
 	if !ctx.visited[fun] {
 		if fun.TypeParams().Len() > len(fun.TypeArgs()) {
-			log.Fatalf("%s: discovered uninstantiated call to generic function %s\n(build with ssa.InstantiateGenerics)\n", ctx.prog.Fset.Position(fun.Pos()), fun.String())
+			log.Fatalf(`%s: discovered uninstantiated call to generic function %s
+(build with ssa.InstantiateGenerics)`,
+				ctx.config.Program.Fset.Position(fun.Pos()), fun.String())
 		}
 
 		ctx.visited[fun] = true
@@ -199,11 +201,11 @@ func (ctx *aContext) call(fun *ssa.Function, args []*Term, fvs []*Term, rval *Te
 	ctx.discoverFun(fun)
 
 	for i, fv := range fun.FreeVars {
-		ctx.unify(ctx.eval(fv), fvs[i])
+		ctx.unify(ctx.sterm(fv), fvs[i])
 	}
 
 	for i, a := range fun.Params {
-		ctx.unify(ctx.eval(a), args[i])
+		ctx.unify(ctx.sterm(a), args[i])
 	}
 
 	for _, block := range fun.Blocks {
@@ -401,7 +403,7 @@ func (ctx *aContext) unify(a, b *Term) {
 			})
 
 			doCalls := func(mth *types.Func, mterm method, i Interface) {
-				i.iterateCallees(ctx.prog, mth, func(fun *ssa.Function, recv *Term) {
+				i.iterateCallees(ctx.config.Program, mth, func(fun *ssa.Function, recv *Term) {
 					ctx.call(fun, append([]*Term{recv}, mterm.args...), nil, mterm.rval)
 				})
 			}

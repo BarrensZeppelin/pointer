@@ -2,6 +2,8 @@ package pointer_test
 
 import (
 	"fmt"
+	"go/token"
+	"go/types"
 	"log"
 	"os"
 	"path/filepath"
@@ -68,19 +70,13 @@ func andersenToCompPtrs(p gopointer.Pointer, reachable map[*ssa.Function]bool) [
 
 func checkSoundness(t *testing.T, prog *ssa.Program) {
 	mains := ssautil.MainPackages(prog.AllPackages())
-	ptres := pointer.Analyze(pointer.AnalysisConfig{
-		Program:             prog,
-		EntryPackages:       mains,
-		TreatMethodsAsRoots: true,
-	})
-	cg := ptres.CallGraph
 
 	pconfig := &gopointer.Config{
 		Mains:          mains,
 		BuildCallGraph: true,
 	}
 
-	for fun := range ptres.Reachable {
+	for fun := range ssautil.AllFunctions(prog) {
 		for _, param := range fun.Params {
 			if pointer.PointerLike(param.Type()) {
 				pconfig.AddQuery(param)
@@ -106,10 +102,19 @@ func checkSoundness(t *testing.T, prog *ssa.Program) {
 		}
 	}
 
-	res, err := gopointer.Analyze(pconfig)
+	gores, err := gopointer.Analyze(pconfig)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	ptres := pointer.Analyze(pointer.AnalysisConfig{
+		Program:       prog,
+		EntryPackages: mains,
+		// Maximum compatibility with tools/go/pointer
+		EntryFunctions:      maps.Keys(gores.CallGraph.Nodes),
+		TreatMethodsAsRoots: true,
+		BindFreeVarsEagerly: true,
+	})
 
 	eds := func(n *callgraph.Node) map[ssa.CallInstruction][]*ssa.Function {
 		ret := map[ssa.CallInstruction][]*ssa.Function{}
@@ -119,8 +124,8 @@ func checkSoundness(t *testing.T, prog *ssa.Program) {
 		return ret
 	}
 
-	for fun, n1 := range cg.Nodes {
-		if n2, found := res.CallGraph.Nodes[fun]; found {
+	for fun, n1 := range ptres.CallGraph.Nodes {
+		if n2, found := gores.CallGraph.Nodes[fun]; fun.Name() != "<root>" && found {
 			e1, e2 := eds(n1), eds(n2)
 			for site, out := range e2 {
 				// Go's pointer analysis has an annoying specialization of
@@ -128,17 +133,27 @@ func checkSoundness(t *testing.T, prog *ssa.Program) {
 				// is generated even when the points-to set of the receiver is
 				// empty...
 				if site != nil && site.Common().IsInvoke() &&
-					res.Queries[site.Common().Value].DynamicTypes().Len() == 0 {
+					gores.Queries[site.Common().Value].DynamicTypes().Len() == 0 {
 					continue
 				}
 
+				var p token.Pos
+				if site != nil {
+					p = site.Pos()
+				}
+
 				assert.Subset(t, e1[site], out,
-					"Missing callees in %v at %v", fun, site)
+					"Missing callees in %v at %v\n%v", fun, site,
+					prog.Fset.Position(p))
 			}
 		}
 	}
 
-	for reg, ptset := range res.Queries {
+	for reg, ptset := range gores.Queries {
+		if !ptres.Reachable[reg.Parent()] {
+			continue
+		}
+
 		pmap := maps.FromKeys(toCompPtrs(ptres.Pointer(reg)))
 		flattened := andersenToCompPtrs(ptset, ptres.Reachable)
 
@@ -150,7 +165,9 @@ func checkSoundness(t *testing.T, prog *ssa.Program) {
 		}
 
 		if len(missing) != 0 {
-			t.Errorf("%s:\n%s\n⊈\n%s", reg, flattened, maps.Keys(pmap))
+			assert.Subsetf(t, flattened, maps.Keys(pmap),
+				"Register %v at %v", reg, prog.Fset.Position(reg.Pos()))
+			// t.Errorf("%s:\n%s\n⊈\n%s", reg, flattened, maps.Keys(pmap))
 		}
 	}
 }
@@ -262,6 +279,97 @@ func TestAnalyze(t *testing.T) {
 		assert.Len(t, toCompPtrs(y), 1,
 			"y should only point to one allocation site")
 		assert.False(t, x.MayAlias(y), "x and y should not alias")
+	})
+
+	t.Run("GoPointerWeirdness", func(t *testing.T) {
+		pkgs, err := pkgutil.LoadPackagesFromSource(`
+			package main
+			var x int
+			func hole(f func()) {
+				if f == nil {
+					x = 10
+				} else {
+					x = 20
+				}
+			}
+
+			func foo(f func()) { f() }
+			func good() {}
+			func bad() {}
+
+			func unreachable() { foo(bad) }
+
+			func main() {
+				hole(unreachable)
+				foo(good)
+			}`)
+
+		require.Nil(t, err)
+
+		prog, _ := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics|ssa.SanityCheckFunctions)
+		prog.Build()
+
+		checkSoundness(t, prog)
+	})
+
+	t.Run("BindFreeVarsEagerly", func(t *testing.T) {
+		// Test that the BindFreeVarsEagerly option does something
+		pkgs, err := pkgutil.LoadPackagesFromSource(`
+			package main
+			type I struct { x int }
+			func (i *I) add() { i.x += 10 }
+
+			func main() {
+				a := &I{x: 5}
+				b := &I{x: 15}
+				println(a.add)
+				f := b.add
+				f()
+			}`)
+
+		require.Nil(t, err)
+
+		prog, spkgs := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics|ssa.SanityCheckFunctions)
+		prog.Build()
+
+		mainPkg := spkgs[0]
+		main := mainPkg.Func("main")
+		makeClosures := 0
+		for _, block := range main.Blocks {
+			for _, insn := range block.Instrs {
+				if _, ok := insn.(*ssa.MakeClosure); ok {
+					makeClosures++
+				}
+			}
+		}
+		require.Equal(t, 2, makeClosures,
+			"The program no longer compiles two instructions for making closures for bound methods")
+
+		mset := prog.MethodSets.MethodSet(types.NewPointer(mainPkg.Type("I").Type()))
+		require.Equal(t, 1, mset.Len())
+
+		add := prog.MethodValue(mset.At(0))
+		require.Len(t, add.Params, 1)
+		recv := add.Params[0]
+
+		for _, bindEagerly := range [...]bool{false, true} {
+			// If free vars bind eagerly, 'a' should flow to the receiver of
+			// add, even though the bound method is not called.
+			expected := 1
+			if bindEagerly {
+				expected++
+			}
+
+			t.Run(fmt.Sprint(bindEagerly), func(t *testing.T) {
+				ptres := pointer.Analyze(pointer.AnalysisConfig{
+					Program:             prog,
+					EntryPackages:       spkgs,
+					BindFreeVarsEagerly: bindEagerly,
+				})
+
+				assert.Len(t, ptres.Pointer(recv).PointsTo(), expected)
+			})
+		}
 	})
 }
 

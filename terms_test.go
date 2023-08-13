@@ -13,7 +13,7 @@ func TestTerms(t *testing.T) {
 		prog := ssa.NewProgram(nil, 0)
 		fun := prog.NewFunction("synth", nil, "synth")
 		ctx := &aContext{
-			prog:    prog,
+			config:  AnalysisConfig{Program: prog},
 			visited: make(map[*ssa.Function]bool),
 		}
 

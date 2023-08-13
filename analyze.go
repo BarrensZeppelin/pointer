@@ -17,7 +17,7 @@ import (
 var ErrNotImplemented = errors.New("not implemented")
 
 type aContext struct {
-	prog *ssa.Program
+	config AnalysisConfig
 
 	queue   queue.Queue[*ssa.Function]
 	visited map[*ssa.Function]bool
@@ -76,18 +76,24 @@ type AnalysisConfig struct {
 	// program entry points.
 	EntryPackages []*ssa.Package
 
+	// The following options are mainly useful for soundness comparison with
+	// the analysis in "golang.org/x/tools/go/pointer". Setting them to true
+	// makes the result an over-approximation of the result of that analysis.
+
 	// When TreatMethodsAsRoots is true, all methods of all types in
 	// prog.RuntimeTypes() are implicitly called.
-	// This is mainly useful for soundness comparison with the analysis in
-	// "golang.org/x/tools/go/pointer" which does the same thing.
 	TreatMethodsAsRoots bool
+	// Bind free variables when a closure is created instead of when it is
+	// called. This makes the result less precise for bound methods that are
+	// not called.
+	BindFreeVarsEagerly bool
 }
 
 func Analyze(config AnalysisConfig) Result {
 	prog := config.Program
 
 	ctx := &aContext{
-		prog:      prog,
+		config:    config,
 		visited:   make(map[*ssa.Function]bool),
 		varToTerm: make(map[ssa.Value]*Term),
 		panicVar:  mkFresh(),
@@ -219,7 +225,7 @@ func Analyze(config AnalysisConfig) Result {
 				if common.IsInvoke() {
 					if pt, ok := find(ctx.eval(v)).x.(PointsTo); ok {
 						find(pt.x).x.(Interface).iterateCallees(
-							ctx.prog,
+							ctx.config.Program,
 							common.Method,
 							func(fun *ssa.Function, _ *Term) {
 								callees = append(callees, fun)
@@ -500,9 +506,16 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 					ctx.unify(reg, alloc(t, T(Chan{payload: mkFresh()})))
 
 				case *ssa.MakeClosure:
-					funs := map[*ssa.Function][]*Term{
-						t.Fn.(*ssa.Function): slices.Map(t.Bindings, ctx.eval),
+					fun := t.Fn.(*ssa.Function)
+					fvs := slices.Map(t.Bindings, ctx.eval)
+					funs := map[*ssa.Function][]*Term{fun: fvs}
+
+					if ctx.config.BindFreeVarsEagerly {
+						for i, fv := range fun.FreeVars {
+							ctx.unify(ctx.sterm(fv), fvs[i])
+						}
 					}
+
 					ctx.unify(reg, T(Closure{funs: funs, rval: mkFresh()}))
 
 				case *ssa.MakeSlice:
