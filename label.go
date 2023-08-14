@@ -68,3 +68,9 @@ func (ep ElementPointer) Type() types.Type {
 		return nil
 	}
 }
+
+type Synthetic struct { Label string }
+
+func (s Synthetic) Site() ssa.Value { return nil }
+func (s Synthetic) Path() string { return "" }
+func (s Synthetic) Type() types.Type { return nil }

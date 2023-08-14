@@ -65,6 +65,8 @@ func (res *Result) resolve(t *Term) []Label {
 			switch preP := preP.(type) {
 			case prePSite:
 				lab = AllocationSite{preP.site}
+			case prePSynth:
+				lab = Synthetic{preP.label}
 			case prePAccess:
 				preP.base = find(preP.base)
 				// Prevent duplicates by making sure that we only handle each

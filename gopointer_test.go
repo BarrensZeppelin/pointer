@@ -39,7 +39,7 @@ func TestGoPointerTests(t *testing.T) {
 	re := regexp.MustCompile(`(?m)// @(\w+)(?: ([^\n"]+))?$`)
 
 	for _, entry := range testfiles {
-		if entry.Name() == "a_test.go" || strings.Contains(entry.Name(), "reflect") {
+		if entry.Name() == "a_test.go" {
 			continue
 		}
 
@@ -59,11 +59,15 @@ func TestGoPointerTests(t *testing.T) {
 
 		entry := entry
 		t.Run(entry.Name(), func(t *testing.T) {
-			// t.Parallel()
+			t.Parallel()
 
 			pkgs, err := pkgutil.LoadPackagesWithConfig(config, fullpath)
 			require.NoError(t, err)
 			require.Len(t, pkgs, 1)
+
+			if _, found := pkgs[0].Imports["reflect"]; found {
+				t.Skipf("%s uses reflection", entry.Name())
+			}
 
 			prog, spkgs := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics)
 			require.NotNil(t, spkgs[0].Func("main"), "No main function")
@@ -231,6 +235,10 @@ func isGenericBody(fn *ssa.Function) bool {
 }
 
 func labelString(l pointer.Label, lineMapping map[string]string, prog *ssa.Program) string {
+	if s, ok := l.(pointer.Synthetic); ok {
+		return s.Label
+	}
+
 	s := l.Site()
 
 	str := func() string {

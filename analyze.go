@@ -114,6 +114,16 @@ func Analyze(config AnalysisConfig) Result {
 	if time := prog.ImportedPackage("time"); time != nil {
 		ctx.time_startTimer = time.Func("startTimer")
 	}
+	if os := prog.ImportedPackage("os"); os != nil {
+		// Allocate a synthetic slice for os.Args
+		ctx.unify(
+			ctx.sterm(os.Var("Args")),
+			T(PointsTo{
+				x:     T(Array{x: mkFresh()}),
+				preps: []prePTag{prePSynth{label: "<command-line args>"}},
+			}),
+		)
+	}
 
 	var roots []*ssa.Function
 	for _, pkg := range config.EntryPackages {
