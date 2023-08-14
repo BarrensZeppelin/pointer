@@ -125,7 +125,7 @@ func checkSoundness(t *testing.T, prog *ssa.Program) {
 	}
 
 	// Make unreachable functions synthetic roots such that we actually
-	// generate constrints for them.
+	// generate constraints for them.
 	var extraEntries []*ssa.Function
 	for fun, n := range gores.CallGraph.Nodes {
 		if !goReachable[n] {
