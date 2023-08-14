@@ -392,9 +392,10 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 
 		switch common.Value.Name() {
 		case "append":
-			ctx.unify(rval, alloc(call.Value(), T(Array{x: mkFresh()})))
+			el := T(Array{x: mkFresh()})
+			ctx.unify(rval, alloc(call.Value(), el))
 			ctx.unify(rval, ctx.eval(common.Args[0]))
-			ctx.unify(rval, ctx.eval(common.Args[1]))
+			ctx.unify(ctx.eval(common.Args[1]), T(PointsTo{x: el}))
 		case "recover":
 			ctx.unify(ctx.panicVar, ctx.eval(call.Value()))
 		case "ssa:wrapnilchk":
@@ -402,7 +403,9 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 			ctx.unify(arg, T(PointsTo{x: mkFresh()}))
 			ctx.unify(arg, rval)
 		case "copy":
-			ctx.unify(ctx.eval(common.Args[0]), ctx.eval(common.Args[1]))
+			el := T(Array{x: mkFresh()})
+			ctx.unify(ctx.eval(common.Args[0]), T(PointsTo{x: el}))
+			ctx.unify(ctx.eval(common.Args[1]), T(PointsTo{x: el}))
 		}
 	}
 
