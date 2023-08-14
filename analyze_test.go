@@ -11,6 +11,7 @@ import (
 
 	"github.com/BarrensZeppelin/pointer"
 	"github.com/BarrensZeppelin/pointer/internal/maps"
+	"github.com/BarrensZeppelin/pointer/internal/queue"
 	"github.com/BarrensZeppelin/pointer/internal/slices"
 	"github.com/BarrensZeppelin/pointer/pkgutil"
 	"github.com/stretchr/testify/assert"
@@ -107,11 +108,36 @@ func checkSoundness(t *testing.T, prog *ssa.Program) {
 		t.Fatal(err)
 	}
 
+	// Find the functions that are reachable from the CG root.
+	goReachable := map[*callgraph.Node]bool{gores.CallGraph.Root: true}
+	{
+		var Q queue.Queue[*callgraph.Node]
+		Q.Push(gores.CallGraph.Root)
+		for !Q.Empty() {
+			n := Q.Pop()
+			for _, ed := range n.Out {
+				if !goReachable[ed.Callee] {
+					goReachable[ed.Callee] = true
+					Q.Push(ed.Callee)
+				}
+			}
+		}
+	}
+
+	// Make unreachable functions synthetic roots such that we actually
+	// generate constrints for them.
+	var extraEntries []*ssa.Function
+	for fun, n := range gores.CallGraph.Nodes {
+		if !goReachable[n] {
+			extraEntries = append(extraEntries, fun)
+		}
+	}
+
 	ptres := pointer.Analyze(pointer.AnalysisConfig{
 		Program:       prog,
 		EntryPackages: mains,
 		// Maximum compatibility with tools/go/pointer
-		EntryFunctions:      maps.Keys(gores.CallGraph.Nodes),
+		EntryFunctions:      extraEntries,
 		TreatMethodsAsRoots: true,
 		BindFreeVarsEagerly: true,
 	})
