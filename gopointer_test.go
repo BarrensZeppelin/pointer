@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/BarrensZeppelin/pointer"
+	"github.com/BarrensZeppelin/pointer/internal/slices"
 	"github.com/BarrensZeppelin/pointer/pkgutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,11 +39,50 @@ func TestGoPointerTests(t *testing.T) {
 
 	re := regexp.MustCompile(`(?m)// @(\w+)(?: ([^\n"]+))?$`)
 
+	knownOverapproximations := map[string][]int{
+		"arrays_go117.go": {
+			57, // assignment is bidirectional
+			65,
+			72,  // same with copy
+			111, // creating a copy of an array through dereference is bidirectional
+			112,
+		},
+		"arrays.go": {
+			54,
+			62,
+			69,
+		},
+		"channels.go": {
+			40, 41, // assignment is bidirectional
+			43, 44,
+		},
+		"context.go": {
+			20, 21, // no context sensitivity
+			29, 30,
+			39, 42,
+		},
+		"finalizer.go": {
+			6, // runtime.SetFinalizer is not handled context-sensitively
+			11,
+			61,
+		},
+		"func.go": {
+			28, // return bidirectional
+		},
+		"maps.go": {
+			45, 46, // assignment to slice contents is bidirectional
+		},
+		"interfaces.go": {
+			39, 42, // assignment to k is bidirectional
+		},
+	}
+
 	for _, entry := range testfiles {
 		if entry.Name() == "a_test.go" {
 			continue
 		}
 
+		overapproximations := knownOverapproximations[entry.Name()]
 		fullpath := path.Join(testdataPath, entry.Name())
 
 		config := &packages.Config{
@@ -131,10 +171,11 @@ func TestGoPointerTests(t *testing.T) {
 				pos := prog.Fset.Position(note.Pos)
 				arg := note.Args[0].(string)
 
+				exact := !slices.Contains(overapproximations, pos.Line)
+
 				switch note.Name {
 				case "pointsto":
 					var expected, actual []string
-					exact := false
 					if arg != "" {
 						for _, g := range strings.Split(arg, " | ") {
 							if g == "..." {
@@ -178,7 +219,7 @@ func TestGoPointerTests(t *testing.T) {
 
 				case "types":
 					var expected typeutil.Map
-					exact := false
+					exact = false // TODO
 					if arg != "" {
 						for _, typstr := range strings.Split(arg, " | ") {
 							if typstr == "..." {
