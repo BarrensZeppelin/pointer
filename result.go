@@ -61,11 +61,12 @@ func (res *Result) resolve(t *Term) []Label {
 	switch it := t.x.(type) {
 	case PointsTo:
 		var labels []Label
-		handledAccesses := make(map[prePAccess]bool)
+		handledAccesses := make(map[prePTag]bool)
 		for _, preP := range it.preps {
+			var lab Label
 			switch preP := preP.(type) {
 			case prePSite:
-				labels = append(labels, AllocationSite{preP.site})
+				lab = AllocationSite{preP.site}
 			case prePAccess:
 				preP.base = find(preP.base)
 				// Prevent duplicates by making sure that we only handle each
@@ -83,8 +84,15 @@ func (res *Result) resolve(t *Term) []Label {
 						}
 					}
 				}
+
+				continue
 			default:
 				log.Fatalf("Unhandled pre-pointer: %T %+v", preP, preP)
+			}
+
+			if !handledAccesses[preP] {
+				handledAccesses[preP] = true
+				labels = append(labels, lab)
 			}
 		}
 

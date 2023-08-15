@@ -307,6 +307,27 @@ func TestAnalyze(t *testing.T) {
 		assert.False(t, x.MayAlias(y), "x and y should not alias")
 	})
 
+	t.Run("DeduplicateLabels", func(t *testing.T) {
+		pkgs, err := pkgutil.LoadPackagesFromSource(`
+			package main
+			var a int
+			func f(x *int) { println(x) }
+			func main() { f(&a); f(&a) }`)
+
+		require.Nil(t, err)
+
+		prog, spkgs := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics|ssa.SanityCheckFunctions)
+		prog.Build()
+
+		ptres := pointer.Analyze(pointer.AnalysisConfig{
+			Program:       prog,
+			EntryPackages: spkgs,
+		})
+
+		labs := ptres.Pointer(spkgs[0].Func("f").Params[0]).PointsTo()
+		assert.Len(t, labs, 1)
+	})
+
 	t.Run("GoPointerWeirdness", func(t *testing.T) {
 		pkgs, err := pkgutil.LoadPackagesFromSource(`
 			package main

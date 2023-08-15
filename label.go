@@ -27,6 +27,9 @@ type Label interface {
 	// label. (Label).Type().Underlying() == (*types.Pointer) except for
 	// allocation sites for slices (where the returned type is (*types.Slice)).
 	Type() types.Type
+
+	// TODO:
+	// fmt.Stringer
 }
 
 type AllocationSite struct{ site ssa.Value }
