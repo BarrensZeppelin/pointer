@@ -86,10 +86,6 @@ func TestGoPointerTests(t *testing.T) {
 	}
 
 	for _, entry := range testfiles {
-		if entry.Name() == "a_test.go" {
-			continue
-		}
-
 		overapproximations := knownOverapproximations[entry.Name()]
 		fullpath := path.Join(testdataPath, entry.Name())
 
@@ -111,14 +107,36 @@ func TestGoPointerTests(t *testing.T) {
 
 			pkgs, err := pkgutil.LoadPackagesWithConfig(config, fullpath)
 			require.NoError(t, err)
-			require.Len(t, pkgs, 1)
 
-			if _, found := pkgs[0].Imports["reflect"]; found {
+			mainPkgIndex := 0
+			if entry.Name() == "a_test.go" {
+				require.Len(t, pkgs, 3)
+
+				for i, pkg := range pkgs {
+					if pkg.Name == "a" {
+						mainPkgIndex = i
+					}
+				}
+			} else {
+				require.Len(t, pkgs, 1)
+			}
+
+			mainPkg := pkgs[mainPkgIndex]
+
+			if _, found := mainPkg.Imports["reflect"]; found {
 				t.Skipf("%s uses reflection", entry.Name())
 			}
 
 			prog, spkgs := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics)
-			require.NotNil(t, spkgs[0].Func("main"), "No main function")
+			require.Condition(t, func() bool {
+				for _, spkg := range spkgs {
+					if spkg.Func("main") != nil {
+						return true
+					}
+				}
+
+				return false
+			}, "No main function")
 
 			prog.Build()
 
@@ -127,15 +145,17 @@ func TestGoPointerTests(t *testing.T) {
 				EntryPackages: spkgs,
 			})
 
-			require.Len(t, pkgs[0].Syntax, 1)
-			notes, err := expect.ExtractGo(prog.Fset, pkgs[0].Syntax[0])
-			require.NoError(t, err)
-
-			mainPkg := pkgs[0]
-			mainFiles := make(map[*token.File]bool)
-			for _, syn := range mainPkg.Syntax {
-				mainFiles[prog.Fset.File(syn.Pos())] = true
+			if entry.Name() == "issue9002.go" {
+				// no notes
+				return
 			}
+
+			require.Len(t, mainPkg.Syntax, 1)
+			notes, err := expect.ExtractGo(prog.Fset, mainPkg.Syntax[0])
+			require.NoError(t, err)
+			require.NotEmpty(t, notes)
+
+			mainFile := prog.Fset.File(mainPkg.Syntax[0].Pos())
 
 			printArgs := map[int][]ssa.Value{}
 			// for fn := range ptres.Reachable {
@@ -144,7 +164,8 @@ func TestGoPointerTests(t *testing.T) {
 					continue // skip generic bodies
 				}
 
-				if fn.Pkg == spkgs[0] || (fn.Pkg == nil && mainFiles[prog.Fset.File(fn.Pos())]) {
+				if fn.Pkg == spkgs[mainPkgIndex] ||
+					(fn.Pkg == nil && prog.Fset.File(fn.Pos()) == mainFile) {
 					for _, block := range fn.Blocks {
 						for _, insn := range block.Instrs {
 							call, ok := insn.(ssa.CallInstruction)
@@ -278,14 +299,6 @@ func labelString(l pointer.Label, lineMapping map[string]string, prog *ssa.Progr
 
 	str := func() string {
 		switch v := s.(type) {
-		// case nil:
-		// 	if l.obj.cgn != nil {
-		// 		// allocation by intrinsic or reflective operation
-		// 		s = fmt.Sprintf("<alloc in %s>", l.obj.cgn.fn)
-		// 	} else {
-		// 		s = "<unknown>" // should be unreachable
-		// 	}
-
 		case *ssa.Function, *ssa.Global:
 			return v.String()
 
