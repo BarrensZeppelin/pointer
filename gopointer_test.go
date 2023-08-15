@@ -66,6 +66,12 @@ func TestGoPointerTests(t *testing.T) {
 			11,
 			61,
 		},
+		"flow.go": {
+			37, 38, 39, // assignment is bidirectional
+		},
+		"fmtexcerpt.go": {
+			32, // known (fixable) imprecision in TypeAssert with interfaces
+		},
 		"func.go": {
 			28, // return bidirectional
 		},
@@ -73,7 +79,9 @@ func TestGoPointerTests(t *testing.T) {
 			45, 46, // assignment to slice contents is bidirectional
 		},
 		"interfaces.go": {
-			39, 42, // assignment to k is bidirectional
+			34, 35, 39, 42, // assignment to k is bidirectional
+			55, 56,
+			97, 101, 105, // known (fixable) imprecision in TypeAssert with interfaces
 		},
 	}
 
@@ -169,6 +177,8 @@ func TestGoPointerTests(t *testing.T) {
 
 			for _, note := range notes {
 				pos := prog.Fset.Position(note.Pos)
+				pos.Filename = strings.TrimPrefix(pos.Filename,
+					testdataPath+string(os.PathSeparator))
 				arg := note.Args[0].(string)
 
 				exact := !slices.Contains(overapproximations, pos.Line)
@@ -202,24 +212,8 @@ func TestGoPointerTests(t *testing.T) {
 						assert.Subsetf(t, actual, expected, "At %v", pos)
 					}
 
-					// for _, count := range expected {
-					// 	if !assert.LessOrEqualf(t, count, 0,
-					// 		"value does not alias these expected labels: %v",
-					// 		expected,
-					// 	) {
-					// 		t.Logf("Actual labels: %v", actual)
-					// 		break
-					// 	}
-					// }
-					// for _, count := range surplus {
-					// 	if !assert.LessOrEqualf(t, count, 0, "value may additionally alias these labels: %v", surplus) {
-					// 		break
-					// 	}
-					// }
-
 				case "types":
 					var expected typeutil.Map
-					exact = false // TODO
 					if arg != "" {
 						for _, typstr := range strings.Split(arg, " | ") {
 							if typstr == "..." {
@@ -258,7 +252,7 @@ func TestGoPointerTests(t *testing.T) {
 					assert.Emptyf(t, expected.Keys(), "Actual types: %v\nAt %v", actual.KeysString(), pos)
 
 					if exact {
-						assert.Empty(t, extra)
+						assert.Emptyf(t, extra, "Additional types %v at %v", extra, pos)
 					}
 				}
 			}
