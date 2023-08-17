@@ -62,7 +62,7 @@ func andersenToCompPtrs(p gopointer.Pointer, reachable map[*ssa.Function]bool) [
 	labels := p.PointsTo().Labels()
 	res := make([]compPtr, 0, len(labels))
 	for _, label := range labels {
-		if v := label.Value(); v != nil && reachable[v.Parent()] {
+		if v := label.Value(); v != nil && (v.Parent() == nil || reachable[v.Parent()]) {
 			res = append(res, compPtr{v, label.Path()})
 		}
 	}

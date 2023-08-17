@@ -46,7 +46,10 @@ func (ctx *aContext) eval(v ssa.Value) *Term {
 		return T(Closure{funs: funs, rval: mkFresh()})
 
 	case *ssa.Global:
-		return T(PointsTo{x: ctx.sterm(v)})
+		return T(PointsTo{
+			x: ctx.sterm(v),
+			preps: []prePTag{prePSite{site: v}},
+		})
 
 	default:
 		/*
