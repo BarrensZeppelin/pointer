@@ -53,8 +53,7 @@ func TestGoPointerTests(t *testing.T) {
 			69,
 		},
 		"channels.go": {
-			40, 41, // assignment is bidirectional
-			43, 44,
+			41, 44, // assignment is bidirectional
 		},
 		"context.go": {
 			20, 21, // no context sensitivity
@@ -66,9 +65,6 @@ func TestGoPointerTests(t *testing.T) {
 			11,
 			61,
 		},
-		"flow.go": {
-			37, 38, 39, // assignment is bidirectional
-		},
 		"fmtexcerpt.go": {
 			32, // known (fixable) imprecision in TypeAssert with interfaces
 		},
@@ -79,8 +75,7 @@ func TestGoPointerTests(t *testing.T) {
 			45, 46, // assignment to slice contents is bidirectional
 		},
 		"interfaces.go": {
-			34, 35, 39, 42, // assignment to k is bidirectional
-			55, 56,
+			39, 42, // assignment to k is bidirectional
 			97, 101, 105, // known (fixable) imprecision in TypeAssert with interfaces
 		},
 	}
@@ -231,6 +226,11 @@ func TestGoPointerTests(t *testing.T) {
 						assert.ElementsMatchf(t, actual, expected, "At %v", pos)
 					} else {
 						assert.Subsetf(t, actual, expected, "At %v", pos)
+
+						if !slices.Contains(expected, "<command-line args>") {
+							assert.NotSubsetf(t, expected, actual,
+								"Assertion at %v should be exact", pos)
+						}
 					}
 
 				case "types":
@@ -274,6 +274,8 @@ func TestGoPointerTests(t *testing.T) {
 
 					if exact {
 						assert.Emptyf(t, extra, "Additional types %v at %v", extra, pos)
+					} else {
+						assert.NotEmptyf(t, extra, "Assertion at %v should be exact", pos)
 					}
 				}
 			}
