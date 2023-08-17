@@ -37,7 +37,8 @@ func TestGoPointerTests(t *testing.T) {
 	testfiles, err := os.ReadDir(testdataPath)
 	require.NoError(t, err)
 
-	re := regexp.MustCompile(`(?m)// @(\w+)(?: ([^\n"]+))?$`)
+	qre := regexp.MustCompile(`(?m)// @(\w+)(?: ([^\n"]+))?$`)
+	callre := regexp.MustCompile(`^main\.`)
 
 	knownOverapproximations := map[string][]int{
 		"arrays_go117.go": {
@@ -89,7 +90,7 @@ func TestGoPointerTests(t *testing.T) {
 			Tests: true,
 			ParseFile: func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
 				if filename == fullpath {
-					src = re.ReplaceAll(src, []byte("//@ $1(\"$2\")"))
+					src = qre.ReplaceAll(src, []byte("//@ $1(\"$2\")"))
 					// t.Log(filename, string(src))
 				}
 				return parser.ParseFile(fset, filename, src, parser.AllErrors|parser.ParseComments)
@@ -191,6 +192,16 @@ func TestGoPointerTests(t *testing.T) {
 				}
 			}
 
+			cgEdges := map[string][]string{}
+			for _, node := range ptres.CallGraph.Nodes {
+				eds := []string{}
+				for _, edge := range node.Out {
+					callee := edge.Callee.Func.String()
+					eds = append(eds, callee)
+				}
+				cgEdges[node.Func.String()] = eds
+			}
+
 			for _, note := range notes {
 				pos := prog.Fset.Position(note.Pos)
 				pos.Filename = strings.TrimPrefix(pos.Filename,
@@ -270,12 +281,22 @@ func TestGoPointerTests(t *testing.T) {
 						}
 					})
 
-					assert.Emptyf(t, expected.Keys(), "Actual types: %v\nAt %v", actual.KeysString(), pos)
+					assert.Emptyf(t, expected.Keys(), "Actual types: %v\nAt %v",
+						actual.KeysString(), pos)
 
 					if exact {
 						assert.Emptyf(t, extra, "Additional types %v at %v", extra, pos)
 					} else {
 						assert.NotEmptyf(t, extra, "Assertion at %v should be exact", pos)
+					}
+
+				case "calls":
+					parts := slices.Map(strings.Split(arg, "->"), func(s string) string {
+						return callre.ReplaceAllString(strings.TrimSpace(s),
+							"command-line-arguments.")
+					})
+					if eds, found := cgEdges[parts[0]]; found {
+						assert.Containsf(t, eds, parts[1], "At %v", pos)
 					}
 				}
 			}

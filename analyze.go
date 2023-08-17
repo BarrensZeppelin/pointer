@@ -316,12 +316,17 @@ func Analyze(config AnalysisConfig) Result {
 			})
 
 			if anyWorks {
-				for fun := range clos.funs {
+				for cfun := range clos.funs {
 					for _, caller := range callers {
 						callgraph.AddEdge(
 							cg.CreateNode(caller.Parent()),
 							caller,
-							cg.CreateNode(fun))
+							cg.CreateNode(cfun))
+
+						callgraph.AddEdge(
+							cg.CreateNode(fun),
+							caller,
+							cg.CreateNode(cfun))
 					}
 				}
 			}
