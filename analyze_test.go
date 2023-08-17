@@ -417,6 +417,8 @@ func TestAnalyze(t *testing.T) {
 				assert.Len(t, ptres.Pointer(recv).PointsTo(), expected)
 			})
 		}
+
+		checkSoundness(t, prog)
 	})
 
 	t.Run("GlobalsUnification", func(t *testing.T) {
@@ -429,9 +431,7 @@ func TestAnalyze(t *testing.T) {
 				s := &g1
 				p := &g2
 				r := p
-				if somepred {
-					r = s
-				}
+				if somepred { r = s }
 				f(r, &g2)
 			}`)
 
@@ -448,6 +448,36 @@ func TestAnalyze(t *testing.T) {
 		fparams := spkgs[0].Func("f").Params
 		assert.Len(t, ptres.Pointer(fparams[0]).PointsTo(), 2)
 		assert.Len(t, ptres.Pointer(fparams[1]).PointsTo(), 1)
+	})
+
+	t.Run("InstructionInliningOptimization", func(t *testing.T) {
+		pkgs, err := pkgutil.LoadPackagesFromSource(`
+			package main
+			var somepred bool
+			func f(x *int, y *int) { print(x) }
+			func main() {
+				a := new(int)
+				b := new(int)
+				c := a
+				if somepred { c = b }
+				f(c, a)
+			}`)
+
+		require.Nil(t, err)
+
+		prog, spkgs := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics|ssa.SanityCheckFunctions)
+		prog.Build()
+
+		ptres := pointer.Analyze(pointer.AnalysisConfig{
+			Program:       prog,
+			EntryPackages: spkgs,
+		})
+
+		fparams := spkgs[0].Func("f").Params
+		assert.Len(t, ptres.Pointer(fparams[0]).PointsTo(), 2)
+		assert.Len(t, ptres.Pointer(fparams[1]).PointsTo(), 1)
+
+		checkSoundness(t, prog)
 	})
 }
 

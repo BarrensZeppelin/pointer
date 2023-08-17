@@ -45,7 +45,8 @@ func (ctx *aContext) eval(v ssa.Value) *Term {
 		funs := map[*ssa.Function][]*Term{v: nil}
 		return T(Closure{funs: funs, rval: mkFresh()})
 
-	case *ssa.Global:
+	case *ssa.Alloc, *ssa.MakeChan, *ssa.MakeInterface,
+		*ssa.MakeMap, *ssa.MakeSlice, *ssa.Global:
 		return T(PointsTo{
 			x: ctx.sterm(v),
 			preps: []prePTag{prePSite{site: v}},
@@ -506,10 +507,10 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 				reg := ctx.sterm(t)
 				switch t := t.(type) {
 				case *ssa.Alloc:
-					ctx.unify(reg, alloc(t, mkFresh()))
+					// handled in eval
 
 				case *ssa.MakeChan:
-					ctx.unify(reg, alloc(t, T(Chan{payload: mkFresh()})))
+					ctx.unify(reg, T(Chan{payload: mkFresh()}))
 
 				case *ssa.MakeClosure:
 					fun := t.Fn.(*ssa.Function)
@@ -525,16 +526,16 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 					ctx.unify(reg, T(Closure{funs: funs, rval: mkFresh()}))
 
 				case *ssa.MakeSlice:
-					ctx.unify(reg, alloc(t, T(Array{x: mkFresh()})))
+					ctx.unify(reg, T(Array{x: mkFresh()}))
 
 				case *ssa.MakeInterface:
 					itf := ctx.zeroTermForType(t.Type()).(Interface)
 					itf.contents.Set(t.X.Type(), ctx.eval(t.X))
 
-					ctx.unify(reg, alloc(t, T(itf)))
+					ctx.unify(reg, T(itf))
 
 				case *ssa.MakeMap:
-					ctx.unify(reg, alloc(t, T(Map{keys: mkFresh(), values: mkFresh()})))
+					ctx.unify(reg, T(Map{keys: mkFresh(), values: mkFresh()}))
 
 				case *ssa.UnOp:
 					rhs := ctx.eval(t.X)

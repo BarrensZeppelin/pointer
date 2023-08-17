@@ -14,7 +14,7 @@ type Result struct {
 	Reachable map[*ssa.Function]bool
 	CallGraph *callgraph.Graph
 
-	varToTerm map[ssa.Value]*Term
+	ctx *aContext
 
 	// Map from terms of PointsTo type to resolved labels.
 	resolvedPointers map[*Term][]Label
@@ -26,11 +26,7 @@ func (r *Result) Pointer(v ssa.Value) Pointer {
 		panic(fmt.Errorf("the type of %v is not pointer-like", v))
 	}
 
-	if s, ok := r.varToTerm[v]; !ok {
-		return Pointer{r, mkFresh()}
-	} else {
-		return Pointer{r, find(s)}
-	}
+	return Pointer{r, find(r.ctx.eval(v))}
 }
 
 // A Pointer is an equivalence class of pointer-like values.
@@ -114,7 +110,9 @@ func (ctx *aContext) result(callgraph *callgraph.Graph) Result {
 		Reachable: ctx.visited,
 		CallGraph: callgraph,
 
-		varToTerm:        ctx.varToTerm,
+		ctx: &aContext{
+			varToTerm: ctx.varToTerm,
+		},
 		resolvedPointers: make(map[*Term][]Label),
 	}
 }
