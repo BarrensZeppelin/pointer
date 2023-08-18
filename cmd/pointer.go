@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime/pprof"
 
 	"github.com/BarrensZeppelin/pointer"
@@ -15,6 +16,7 @@ import (
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
 var dir = flag.String("dir", "", "alternative directory to run the go build tool in")
+var gopath = flag.String("gopath", "", "override GOPATH in build tool")
 
 func main() {
 	flag.Parse()
@@ -39,10 +41,20 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
+	env := os.Environ()
+	if *gopath != "" {
+		abs, err := filepath.Abs(*gopath)
+		if err != nil {
+			log.Fatalf("Could not make %s absolute", *gopath)
+		}
+		env = append(env, "GOPATH=" + abs)
+	}
+
 	pkgs, err := pkgutil.LoadPackagesWithConfig(&packages.Config{
 		Mode:  pkgutil.LoadMode,
 		Tests: true,
 		Dir:   *dir,
+		Env: env,
 	}, flag.Args()...)
 
 	if err != nil {
