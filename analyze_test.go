@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/BarrensZeppelin/pointer"
@@ -535,4 +536,52 @@ func TestGoatExamples(t *testing.T) {
 			checkSoundness(t, prog)
 		})
 	}
+}
+
+func Example() {
+	// Parse example program.
+	pkgs, err := pkgutil.LoadPackagesFromSource(
+		`package main
+		func main() {
+			ch := make(chan int, 1)
+			ch <- 10
+		}`)
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// Create SSA-form program representation.
+	prog, spkgs := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics)
+
+	// Build SSA code for bodies of all functions in the whole program.
+	prog.Build()
+
+	// Get a reference to the main package.
+	mainPkg := spkgs[0]
+
+	// Run the pointer analysis with the main package as entrypoint.
+	result := pointer.Analyze(pointer.AnalysisConfig{
+		Program:       prog,
+		EntryPackages: []*ssa.Package{mainPkg},
+	})
+
+	for _, block := range mainPkg.Func("main").Blocks {
+		for _, insn := range block.Instrs {
+			if send, ok := insn.(*ssa.Send); ok {
+				// Print the allocation sites of the channels that are sent on.
+				var labels []string
+				for _, ptr := range result.Pointer(send.Chan).PointsTo() {
+					site := ptr.Site()
+					labels = append(labels,
+						fmt.Sprintf("  %v %s", prog.Fset.Position(site.Pos()), site))
+				}
+
+				fmt.Printf("Send on channels:\n%s", strings.Join(labels, "\n"))
+			}
+		}
+	}
+	// Output: Send on channels:
+	//   /fake/testpackage/main.go:3:14 make chan int 1:int
 }
