@@ -1,3 +1,6 @@
+// Package pointer provides a Go adaptation of [Steensgaard's pointer analysis algorithm].
+//
+// [Steensgaard's pointer analysis algorithm]: https://dl.acm.org/doi/abs/10.1145/237721.237727
 package pointer
 
 import (

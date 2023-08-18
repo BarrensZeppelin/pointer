@@ -1,5 +1,7 @@
 # Unification based pointer analysis for Go
 
+[![Go Reference](https://pkg.go.dev/badge/golang.org/x/tools/go/pointer.svg)](https://pkg.go.dev/golang.org/x/tools/go/pointer)
+
 This repository contains a Go adaptation of [Steensgaard's pointer analysis algorithm][steensgaard].
 
 The analysis is field-sensitive and context-insensitive.
