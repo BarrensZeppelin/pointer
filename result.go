@@ -5,6 +5,7 @@ import (
 	"go/types"
 	"log"
 
+	"github.com/BarrensZeppelin/pointer/internal/slices"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/types/typeutil"
@@ -38,12 +39,21 @@ type Pointer struct {
 	typ  types.Type
 }
 
-// MayAlias reports, in constant time, whether the receiver pointer may alias
-// the argument pointer.
+// MayAlias reports whether the receiver pointer may alias the argument pointer.
 func (p Pointer) MayAlias(o Pointer) bool {
-	// FIXME: This doesn't work after the inlining optimisation
 	_, isPtr := p.term.x.(PointsTo)
-	return isPtr && p.term == o.term
+	if isPtr && p.term == o.term {
+		return true
+	}
+
+	ol := o.PointsTo()
+	for _, l := range p.PointsTo() {
+		if slices.Contains(ol, l) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Deref returns the abstract pointer associated with the value that is pointed
@@ -60,8 +70,7 @@ func (p Pointer) Deref() Pointer {
 	}
 
 	var rt *Term
-	pt, ok := p.term.x.(PointsTo)
-	if !ok {
+	if pt, ok := p.term.x.(PointsTo); !ok {
 		rt = mkFresh()
 	} else {
 		rt = find(pt.x)

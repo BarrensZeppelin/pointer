@@ -306,6 +306,9 @@ func TestAnalyze(t *testing.T) {
 		assert.Len(t, toCompPtrs(y), 1,
 			"y should only point to one allocation site")
 		assert.False(t, x.MayAlias(y), "x and y should not alias")
+
+		assert.True(t, x.MayAlias(x), "x and x should alias")
+		assert.True(t, x.MayAlias(ptres.Pointer(allocs[0])), "x and x should alias")
 	})
 
 	t.Run("DeduplicateLabels", func(t *testing.T) {
