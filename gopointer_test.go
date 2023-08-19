@@ -193,7 +193,7 @@ func TestGoPointerTests(t *testing.T) {
 			}
 
 			cgEdges := map[string][]string{}
-			for _, node := range ptres.CallGraph.Nodes {
+			for _, node := range ptres.CallGraph().Nodes {
 				eds := []string{}
 				for _, edge := range node.Out {
 					callee := edge.Callee.Func.String()

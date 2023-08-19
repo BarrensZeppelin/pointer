@@ -151,7 +151,7 @@ func checkSoundness(t *testing.T, prog *ssa.Program) {
 		return ret
 	}
 
-	for fun, n1 := range ptres.CallGraph.Nodes {
+	for fun, n1 := range ptres.CallGraph().Nodes {
 		if n2, found := gores.CallGraph.Nodes[fun]; fun.Name() != "<root>" && found {
 			e1, e2 := eds(n1), eds(n2)
 			for site, out := range e2 {

@@ -15,9 +15,10 @@ import (
 type Result struct {
 	// Reachable contains all function discovered during analysis.
 	Reachable map[*ssa.Function]bool
-	CallGraph *callgraph.Graph
 
-	ctx *aContext
+	ctx                  *aContext
+	callGraph            *callgraph.Graph
+	initializedCallGraph bool
 
 	// Map from terms of PointsTo type to resolved labels.
 	resolvedPointers map[*Term][]Label
@@ -166,11 +167,15 @@ func (r *Result) DynamicTypes(v ssa.Value) (res *typeutil.Map) {
 func (ctx *aContext) result(callgraph *callgraph.Graph) Result {
 	return Result{
 		Reachable: ctx.visited,
-		CallGraph: callgraph,
 
 		ctx: &aContext{
+			// used for eval (and sterm)
 			varToTerm: ctx.varToTerm,
+
+			// used to construct call graph edges
+			time_startTimer: ctx.time_startTimer,
 		},
+		callGraph:        callgraph,
 		resolvedPointers: make(map[*Term][]Label),
 	}
 }
