@@ -28,20 +28,46 @@ func (r *Result) Pointer(v ssa.Value) Pointer {
 		panic(fmt.Errorf("the type of %v is not pointer-like", v))
 	}
 
-	return Pointer{r, find(r.ctx.eval(v))}
+	return Pointer{r, find(r.ctx.eval(v)), v.Type()}
 }
 
 // A Pointer is an equivalence class of pointer-like values.
 type Pointer struct {
 	res  *Result
 	term *Term
+	typ  types.Type
 }
 
 // MayAlias reports, in constant time, whether the receiver pointer may alias
 // the argument pointer.
 func (p Pointer) MayAlias(o Pointer) bool {
+	// FIXME: This doesn't work after the inlining optimisation
 	_, isPtr := p.term.x.(PointsTo)
 	return isPtr && p.term == o.term
+}
+
+// Deref returns the abstract pointer associated with the value that is pointed
+// to by the receiver.
+func (p Pointer) Deref() Pointer {
+	ptyp, ok := p.typ.Underlying().(*types.Pointer)
+	if !ok {
+		panic(fmt.Errorf("type %v cannot be dereferenced", p.typ))
+	}
+
+	etyp := ptyp.Elem()
+	if !PointerLike(etyp) {
+		panic(fmt.Errorf("the element type of %v is not pointer-like", p.typ))
+	}
+
+	var rt *Term
+	pt, ok := p.term.x.(PointsTo)
+	if !ok {
+		rt = mkFresh()
+	} else {
+		rt = find(pt.x)
+	}
+
+	return Pointer{p.res, rt, etyp}
 }
 
 // PointsTo returns a set of labels representing objects that the pointer may
