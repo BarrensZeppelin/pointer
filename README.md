@@ -3,16 +3,23 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/BarrensZeppelin/pointer.svg)](https://pkg.go.dev/github.com/BarrensZeppelin/pointer)
 
 This repository contains a Go adaptation of [Steensgaard's pointer analysis algorithm][steensgaard].
+The result of the static analysis can be used to determine the set of objects
+that a variable may point to at run-time. It can also be used to construct a
+call graph where dynamically dispatched calls have been resolved using the
+computed points-to information.
 
-The analysis is field-sensitive and context-insensitive.
 
-Having field-sensitivity means that the analysis cannot run in $O(n\cdot\alpha(n))$ time (where $n$ is the size of the program), which is the runtime of the algorithm presented in the paper.
+## Analysis details
+
+The analysis is field-sensitive, context-insensitive, and aims to be sound.
+
+Due to field-sensitivity the analysis cannot run in $O(n\cdot\alpha(n))$ time (where $n$ is the size of the program), which is the runtime of the algorithm presented in the paper.
 Other details, such as handling dynamic dispatch for interface methods, also prevent us from obtaining the above runtime.
 It should still be fast, though.
 The goal is that this implementation should be significantly faster than the implementation of [Andersen's pointer analysis algorithm][andersen] provided by [the Go team][gopointer] (with a precision trade-off).
 
 This implementation makes many of the same design choices as the implementation of Andersen's algorithm.
-Notably, arrays (and slices) are modelled as having 1 element, conversions using unsafe.Pointer are not modelled soundly, and the effects of opaque code (runtime, Cgo, etc.) is under-approximated.
+Notably, arrays (and slices) are modelled as having 1 element, conversions using unsafe.Pointer are not modelled soundly, and the effects of opaque code (runtime, Cgo, etc.) are under-approximated.
 The API is also similar.
 
 Contrary to the implementation of Andersen's algorithm, no special modelling is offered for reflection (which is available under a flag there).
