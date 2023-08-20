@@ -37,11 +37,11 @@ func (r *Result) CallGraph() *callgraph.Graph {
 
 					var callees []*ssa.Function
 					if common.IsInvoke() {
-						if pt, ok := find(ctx.eval(v)).x.(PointsTo); ok {
-							find(pt.x).x.(Interface).iterateCallees(
+						if pt, ok := find(ctx.eval(v)).x.(tPointsTo); ok {
+							find(pt.x).x.(tInterface).iterateCallees(
 								prog,
 								common.Method,
-								func(fun *ssa.Function, _ *Term) {
+								func(fun *ssa.Function, _ *term) {
 									callees = append(callees, fun)
 								})
 						}
@@ -52,8 +52,8 @@ func (r *Result) CallGraph() *callgraph.Graph {
 
 							fI := FieldIndex(runtimeTimerT, "f")
 							arg := find(ctx.eval(common.Args[0]))
-							strukt := find(arg.x.(PointsTo).x).x.(Struct)
-							closure := find(strukt.fields[fI]).x.(Closure)
+							strukt := find(arg.x.(tPointsTo).x).x.(tStruct)
+							closure := find(strukt.fields[fI]).x.(tClosure)
 
 							for fun := range closure.funs {
 								callgraph.AddEdge(cg.CreateNode(sc), nil, cg.CreateNode(fun))
@@ -62,7 +62,7 @@ func (r *Result) CallGraph() *callgraph.Graph {
 
 						callees = []*ssa.Function{sc}
 					} else if _, isBuiltin := v.(*ssa.Builtin); !isBuiltin {
-						closure, _ := find(ctx.eval(v)).x.(Closure)
+						closure, _ := find(ctx.eval(v)).x.(tClosure)
 						for fun := range closure.funs {
 							callees = append(callees, fun)
 						}
@@ -88,12 +88,12 @@ func (r *Result) CallGraph() *callgraph.Graph {
 				goto DONE
 			}
 
-			obj := find(find(ctx.eval(fun.Params[0])).x.(PointsTo).x).x.(Interface)
+			obj := find(find(ctx.eval(fun.Params[0])).x.(tPointsTo).x).x.(tInterface)
 			if obj.contents.Len() == 0 {
 				goto DONE
 			}
 
-			funs := find(find(ctx.eval(fun.Params[1])).x.(PointsTo).x).x.(Interface)
+			funs := find(find(ctx.eval(fun.Params[1])).x.(tPointsTo).x).x.(tInterface)
 			if funs.contents.Len() == 0 {
 				goto DONE
 			}
@@ -104,7 +104,7 @@ func (r *Result) CallGraph() *callgraph.Graph {
 					return
 				}
 
-				clos, ok := find(v.(*Term)).x.(Closure)
+				clos, ok := find(v.(*term)).x.(tClosure)
 				if !ok {
 					return
 				}

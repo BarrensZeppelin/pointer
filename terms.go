@@ -10,80 +10,85 @@ import (
 	"golang.org/x/tools/go/types/typeutil"
 )
 
-type termTag interface{ termTag() }
+type termTag interface {
+	// method used to tag term constructors
+	termTag()
+	fmt.Stringer
+}
+
 type ttag struct{}
 
 func (ttag) termTag() {}
 
-type Fresh struct {
+type tFresh struct {
 	ttag
 	index int
 }
 
-func (f Fresh) String() string {
+func (f tFresh) String() string {
 	return fmt.Sprintf("α%d", f.index)
 }
 
-/* type Site struct {
+/* type tSite struct {
 	ttag
 	ssa.Value
 	Register bool
 }
 
-func (s Site) String() string {
+func (s tSite) String() string {
 	if s.Register {
 		return s.Name()
 	}
 	return fmt.Sprintf("%s = %v", s.Name(), s.Value.String())
 } */
 
-type PointsTo struct {
+type tPointsTo struct {
 	ttag
 	// The term representing the pointed to objects
-	x *Term
+	x *term
 	// List of points-to "pre-" constraints collected during solving.
 	// These are used afterwards to reconstruct the points-to relation.
 	preps []prePTag
 }
 
-func (c PointsTo) String() string {
+func (c tPointsTo) String() string {
 	return fmt.Sprintf("↑ %T", find(c.x).x)
 }
 
-type Chan struct {
+type tChan struct {
 	ttag
-	payload *Term
+	payload *term
 }
 
-func (c Chan) String() string {
+func (c tChan) String() string {
 	return fmt.Sprintf("Chan(%v)", find(c.payload))
 }
 
-type Array struct {
+type tArray struct {
 	ttag
-	x *Term
+	x *term
 }
 
-func (a Array) String() string {
+func (a tArray) String() string {
 	return fmt.Sprintf("Array(%v)", find(a.x))
 }
 
-type Map struct {
+type tMap struct {
 	ttag
-	keys   *Term
-	values *Term
+	keys   *term
+	values *term
 }
 
-func (m Map) String() string {
+func (m tMap) String() string {
 	return fmt.Sprintf("Map(%v ↦ %v)", find(m.keys), find(m.values))
 }
 
-type Struct struct {
+type tStruct struct {
 	ttag
-	fields []*Term
+	fields []*term
 }
 
-func (s Struct) String() string {
+func (s tStruct) String() string {
 	var inner []string
 	for i, field := range s.fields {
 		inner = append(inner, fmt.Sprintf("%d ↦ %v", i, find(field)))
@@ -91,15 +96,15 @@ func (s Struct) String() string {
 	return fmt.Sprintf("Struct(%v)", inner)
 }
 
-type Closure struct {
+type tClosure struct {
 	ttag
 	called bool
-	funs   map[*ssa.Function][]*Term
-	args   []*Term
-	rval   *Term
+	funs   map[*ssa.Function][]*term
+	args   []*term
+	rval   *term
 }
 
-func (c Closure) String() string {
+func (c tClosure) String() string {
 	var inner []string
 	for fun, fvs := range c.funs {
 		inner = append(inner, fmt.Sprintf("%v ↦ %v", fun, slices.Map(fvs, find)))
@@ -108,28 +113,28 @@ func (c Closure) String() string {
 }
 
 type method struct {
-	args []*Term
-	rval *Term
+	args []*term
+	rval *term
 }
 
-type Interface struct {
+type tInterface struct {
 	ttag
 	contents      *typeutil.Map
 	calledMethods map[*types.Func]method
 }
 
-func (i Interface) String() string {
+func (i tInterface) String() string {
 	var inner []string
 	i.contents.Iterate(func(t types.Type, v any) {
-		inner = append(inner, fmt.Sprintf("%v ↦ %v", t, find(v.(*Term))))
+		inner = append(inner, fmt.Sprintf("%v ↦ %v", t, find(v.(*term))))
 	})
 	return fmt.Sprintf("Interface(%v)", inner)
 }
 
-func (i Interface) iterateCallees(
+func (i tInterface) iterateCallees(
 	prog *ssa.Program,
 	method *types.Func,
-	f func(fun *ssa.Function, recv *Term),
+	f func(fun *ssa.Function, recv *term),
 ) {
 	recv := method.Type().(*types.Signature).Recv().Type().Underlying().(*types.Interface)
 	i.contents.Iterate(func(key types.Type, v any) {
@@ -145,25 +150,25 @@ func (i Interface) iterateCallees(
 			}
 
 			fun := prog.MethodValue(sel)
-			f(fun, v.(*Term))
+			f(fun, v.(*term))
 		}
 	})
 }
 
-type Term struct {
+type term struct {
 	x      termTag
-	parent *Term
+	parent *term
 }
 
-func (t *Term) String() string {
+func (t *term) String() string {
 	return fmt.Sprint(t.x)
 }
 
-func T(x termTag) *Term {
-	return &Term{x: x}
+func t(x termTag) *term {
+	return &term{x: x}
 }
 
-func find(t *Term) *Term {
+func find(t *term) *term {
 	if t.parent == nil {
 		return t
 	}
@@ -172,7 +177,7 @@ func find(t *Term) *Term {
 }
 
 // union makes `b` the parent of `a`.
-func union(a, b *Term) {
+func union(a, b *term) {
 	if a.parent != nil || b.parent != nil {
 		panic("union arguments should be representatives")
 	}
@@ -197,7 +202,7 @@ func (ctx *aContext) discoverFun(fun *ssa.Function) {
 	}
 }
 
-func (ctx *aContext) call(fun *ssa.Function, args []*Term, fvs []*Term, rval *Term) {
+func (ctx *aContext) call(fun *ssa.Function, args []*term, fvs []*term, rval *term) {
 	ctx.discoverFun(fun)
 
 	for i, fv := range fun.FreeVars {
@@ -215,7 +220,7 @@ func (ctx *aContext) call(fun *ssa.Function, args []*Term, fvs []*Term, rval *Te
 			case 1:
 				ctx.unify(rval, ctx.eval(ret.Results[0]))
 			default:
-				ctx.unify(rval, T(Struct{fields: slices.Map(ret.Results, ctx.eval)}))
+				ctx.unify(rval, t(tStruct{fields: slices.Map(ret.Results, ctx.eval)}))
 			}
 		}
 	}
@@ -227,7 +232,7 @@ func checkLen[L ~[]T, T any](a, b L, msg string) {
 	}
 }
 
-func (ctx *aContext) unify(a, b *Term) {
+func (ctx *aContext) unify(a, b *term) {
 	a, b = find(a), find(b)
 	if a == b {
 		return
@@ -239,20 +244,20 @@ func (ctx *aContext) unify(a, b *Term) {
 	// applied before calling unify recursively!
 
 	switch x := a.x.(type) {
-	/* case Site:
-	if _, yIsSite := b.x.(Site); yIsSite {
+	/* case tSite:
+	if _, yIsSite := b.x.(tSite); yIsSite {
 		union(a, b)
 	} else {
 		// Swap order of arguments
 		ctx.unify(b, a)
 	} */
-	case Fresh:
+	case tFresh:
 		union(a, b)
-	case PointsTo:
+	case tPointsTo:
 		switch y := b.x.(type) {
-		case Fresh:
+		case tFresh:
 			union(b, a)
-		case PointsTo:
+		case tPointsTo:
 			union(a, b)
 
 			if x.preps != nil {
@@ -271,42 +276,42 @@ func (ctx *aContext) unify(a, b *Term) {
 		default:
 			panic(unificationError(x, y))
 		}
-	case Chan:
+	case tChan:
 		switch y := b.x.(type) {
-		case Fresh:
+		case tFresh:
 			union(b, a)
-		case Chan:
+		case tChan:
 			union(a, b)
 			ctx.unify(x.payload, y.payload)
 		default:
 			panic(unificationError(x, y))
 		}
-	case Array:
+	case tArray:
 		switch y := b.x.(type) {
-		case Fresh:
+		case tFresh:
 			union(b, a)
-		case Array:
+		case tArray:
 			union(a, b)
 			ctx.unify(x.x, y.x)
 		default:
 			panic(unificationError(x, y))
 		}
-	case Map:
+	case tMap:
 		switch y := b.x.(type) {
-		case Fresh:
+		case tFresh:
 			union(b, a)
-		case Map:
+		case tMap:
 			union(a, b)
 			ctx.unify(x.keys, y.keys)
 			ctx.unify(x.values, y.values)
 		default:
 			panic(unificationError(x, y))
 		}
-	case Struct:
+	case tStruct:
 		switch y := b.x.(type) {
-		case Fresh:
+		case tFresh:
 			union(b, a)
-		case Struct:
+		case tStruct:
 			union(a, b)
 
 			checkLen(x.fields, y.fields, "Number of struct fields don't match")
@@ -317,11 +322,11 @@ func (ctx *aContext) unify(a, b *Term) {
 		default:
 			panic(unificationError(x, y))
 		}
-	case Closure:
+	case tClosure:
 		switch y := b.x.(type) {
-		case Fresh:
+		case tFresh:
 			union(b, a)
-		case Closure:
+		case tClosure:
 			union(a, b)
 
 			// Defers are abused here to avoid reentrancy issues
@@ -377,11 +382,11 @@ func (ctx *aContext) unify(a, b *Term) {
 		default:
 			panic(unificationError(x, y))
 		}
-	case Interface:
+	case tInterface:
 		switch y := b.x.(type) {
-		case Fresh:
+		case tFresh:
 			union(b, a)
-		case Interface:
+		case tInterface:
 			if x.contents.Len() > y.contents.Len() {
 				x, y = y, x
 				union(b, a)
@@ -390,21 +395,21 @@ func (ctx *aContext) unify(a, b *Term) {
 			}
 
 			// xContents := make(map[types.Type]*Term, x.contents.Len())
-			sharedContents := make(map[types.Type]*Term)
+			sharedContents := make(map[types.Type]*term)
 
 			// Merge interface values from x to y
 			x.contents.Iterate(func(key types.Type, v1 any) {
 				if v2 := y.contents.At(key); v2 != nil {
-					sharedContents[key] = v1.(*Term)
+					sharedContents[key] = v1.(*term)
 				} else {
 					// xContents[key] = v1.(*Term)
 					y.contents.Set(key, v1)
 				}
 			})
 
-			doCalls := func(mth *types.Func, mterm method, i Interface) {
-				i.iterateCallees(ctx.config.Program, mth, func(fun *ssa.Function, recv *Term) {
-					ctx.call(fun, append([]*Term{recv}, mterm.args...), nil, mterm.rval)
+			doCalls := func(mth *types.Func, mterm method, i tInterface) {
+				i.iterateCallees(ctx.config.Program, mth, func(fun *ssa.Function, recv *term) {
+					ctx.call(fun, append([]*term{recv}, mterm.args...), nil, mterm.rval)
 				})
 			}
 
@@ -427,7 +432,7 @@ func (ctx *aContext) unify(a, b *Term) {
 
 			// Process delayed unifications for shared contents
 			for key, v1 := range sharedContents {
-				ctx.unify(v1, y.contents.At(key).(*Term))
+				ctx.unify(v1, y.contents.At(key).(*term))
 			}
 
 			// Call relevant functions on contents in x
@@ -449,7 +454,7 @@ func (ctx *aContext) unify(a, b *Term) {
 
 // sterm returns the term containing the constraint variable for the given ssa
 // value. The constructed terms are memoized in a map.
-func (ctx *aContext) sterm(site ssa.Value) *Term {
+func (ctx *aContext) sterm(site ssa.Value) *term {
 	if term, found := ctx.varToTerm[site]; found {
 		return term
 	}
@@ -459,33 +464,33 @@ func (ctx *aContext) sterm(site ssa.Value) *Term {
 	return term
 }
 
-var mkFresh = func() func() *Term {
+var mkFresh = func() func() *term {
 	var cntr int
-	return func() *Term {
+	return func() *term {
 		cntr++
-		return T(Fresh{index: cntr})
+		return t(tFresh{index: cntr})
 	}
 }()
 
 func (ctx *aContext) zeroTermForType(t types.Type) termTag {
 	switch t := t.Underlying().(type) {
 	case *types.Struct:
-		fields := make([]*Term, t.NumFields())
+		fields := make([]*term, t.NumFields())
 		for i := range fields {
 			fields[i] = mkFresh()
 		}
-		return Struct{fields: fields}
+		return tStruct{fields: fields}
 	case *types.Tuple:
-		fields := make([]*Term, t.Len())
+		fields := make([]*term, t.Len())
 		for i := range fields {
 			fields[i] = mkFresh()
 		}
-		return Struct{fields: fields}
+		return tStruct{fields: fields}
 
 	case *types.Interface:
 		m := &typeutil.Map{}
 		m.SetHasher(ctx.tHasher)
-		return Interface{
+		return tInterface{
 			contents:      m,
 			calledMethods: make(map[*types.Func]method),
 		}

@@ -21,7 +21,7 @@ type Result struct {
 	initializedCallGraph bool
 
 	// Map from terms of PointsTo type to resolved labels.
-	resolvedPointers map[*Term][]Label
+	resolvedPointers map[*term][]Label
 }
 
 // Pointer retrieves the abstract pointer associated with the given ssa Value.
@@ -36,13 +36,13 @@ func (r *Result) Pointer(v ssa.Value) Pointer {
 // A Pointer is an equivalence class of pointer-like values.
 type Pointer struct {
 	res  *Result
-	term *Term
+	term *term
 	typ  types.Type
 }
 
 // MayAlias reports whether the receiver pointer may alias the argument pointer.
 func (p Pointer) MayAlias(o Pointer) bool {
-	_, isPtr := p.term.x.(PointsTo)
+	_, isPtr := p.term.x.(tPointsTo)
 	if isPtr && p.term == o.term {
 		return true
 	}
@@ -70,8 +70,8 @@ func (p Pointer) Deref() Pointer {
 		panic(fmt.Errorf("the element type of %v is not pointer-like", p.typ))
 	}
 
-	var rt *Term
-	if pt, ok := p.term.x.(PointsTo); !ok {
+	var rt *term
+	if pt, ok := p.term.x.(tPointsTo); !ok {
 		rt = mkFresh()
 	} else {
 		rt = find(pt.x)
@@ -87,13 +87,13 @@ func (p Pointer) PointsTo() []Label {
 }
 
 // resolve caches the result of computing the pointed-to labels for a pointer.
-func (res *Result) resolve(t *Term) []Label {
+func (res *Result) resolve(t *term) []Label {
 	if resolved, found := res.resolvedPointers[t]; found {
 		return resolved
 	}
 
 	switch it := t.x.(type) {
-	case PointsTo:
+	case tPointsTo:
 		var labels []Label
 		handledAccesses := make(map[prePTag]bool)
 		for _, preP := range it.preps {
@@ -134,7 +134,7 @@ func (res *Result) resolve(t *Term) []Label {
 
 		res.resolvedPointers[t] = labels
 		return labels
-	case Closure:
+	case tClosure:
 		ret := make([]Label, 0, len(it.funs))
 		for fun := range it.funs {
 			ret = append(ret, AllocationSite{fun})
@@ -176,6 +176,6 @@ func (ctx *aContext) result(callgraph *callgraph.Graph) Result {
 			time_startTimer: ctx.time_startTimer,
 		},
 		callGraph:        callgraph,
-		resolvedPointers: make(map[*Term][]Label),
+		resolvedPointers: make(map[*term][]Label),
 	}
 }

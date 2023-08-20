@@ -17,7 +17,7 @@ type prePSite struct {
 	site ssa.Value
 }
 
-// prePSynth denotes a synthetically allocated object.
+// prePSynth denotes a synthetic object.
 type prePSynth struct {
 	pptag
 	label string
@@ -27,6 +27,6 @@ type prePSynth struct {
 // -1 indicates array access.
 type prePAccess struct {
 	pptag
-	base  *Term
+	base  *term
 	field int
 }

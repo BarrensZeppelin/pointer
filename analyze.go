@@ -25,10 +25,10 @@ type aContext struct {
 	queue   queue.Queue[*ssa.Function]
 	visited map[*ssa.Function]bool
 
-	varToTerm map[ssa.Value]*Term
+	varToTerm map[ssa.Value]*term
 
 	// Constraint var for the global panic argument
-	panicVar *Term
+	panicVar *term
 
 	// Shared type hasher
 	tHasher typeutil.Hasher
@@ -39,18 +39,18 @@ type aContext struct {
 	sync_runtime_registerPoolCleanup *ssa.Function
 }
 
-func (ctx *aContext) eval(v ssa.Value) *Term {
+func (ctx *aContext) eval(v ssa.Value) *term {
 	switch v := v.(type) {
 	case *ssa.Const:
 		return mkFresh()
 
 	case *ssa.Function:
-		funs := map[*ssa.Function][]*Term{v: nil}
-		return T(Closure{funs: funs, rval: mkFresh()})
+		funs := map[*ssa.Function][]*term{v: nil}
+		return t(tClosure{funs: funs, rval: mkFresh()})
 
 	case *ssa.Alloc, *ssa.MakeChan, *ssa.MakeInterface,
 		*ssa.MakeMap, *ssa.MakeSlice, *ssa.Global:
-		return T(PointsTo{
+		return t(tPointsTo{
 			x:     ctx.sterm(v),
 			preps: []prePTag{prePSite{site: v}},
 		})
@@ -102,7 +102,7 @@ func Analyze(config AnalysisConfig) Result {
 	ctx := &aContext{
 		config:    config,
 		visited:   make(map[*ssa.Function]bool),
-		varToTerm: make(map[ssa.Value]*Term),
+		varToTerm: make(map[ssa.Value]*term),
 		panicVar:  mkFresh(),
 		tHasher:   typeutil.MakeHasher(),
 	}
@@ -121,8 +121,8 @@ func Analyze(config AnalysisConfig) Result {
 		// Allocate a synthetic slice for os.Args
 		ctx.unify(
 			ctx.sterm(os.Var("Args")),
-			T(PointsTo{
-				x:     T(Array{x: mkFresh()}),
+			t(tPointsTo{
+				x:     t(tArray{x: mkFresh()}),
 				preps: []prePTag{prePSynth{label: "<command-line args>"}},
 			}),
 		)
@@ -165,25 +165,25 @@ func Analyze(config AnalysisConfig) Result {
 		if runtime := prog.ImportedPackage("runtime"); runtime != nil {
 			fun := runtime.Func("SetFinalizer")
 
-			objIT := T(ctx.zeroTermForType(fun.Params[0].Type()))
+			objIT := t(ctx.zeroTermForType(fun.Params[0].Type()))
 			objT := ctx.eval(fun.Params[0])
-			ctx.unify(objT, T(PointsTo{x: objIT}))
-			obj := find(objIT).x.(Interface)
+			ctx.unify(objT, t(tPointsTo{x: objIT}))
+			obj := find(objIT).x.(tInterface)
 
 			if obj.contents.Len() == 0 {
 				break
 			}
 
-			funsT := T(ctx.zeroTermForType(fun.Params[1].Type()))
-			ctx.unify(ctx.eval(fun.Params[1]), T(PointsTo{x: funsT}))
-			funs := find(funsT).x.(Interface)
+			funsT := t(ctx.zeroTermForType(fun.Params[1].Type()))
+			ctx.unify(ctx.eval(fun.Params[1]), t(tPointsTo{x: funsT}))
+			funs := find(funsT).x.(tInterface)
 
 			if funs.contents.Len() == 0 {
 				break
 			}
 
 			funs.contents.Iterate(func(fType types.Type, v any) {
-				fTerm := v.(*Term)
+				fTerm := v.(*term)
 				fSig, ok := fType.Underlying().(*types.Signature)
 				if !ok || fSig.Recv() != nil || fSig.Params().Len() != 1 {
 					return
@@ -192,10 +192,10 @@ func Analyze(config AnalysisConfig) Result {
 				pType := fSig.Params().At(0).Type()
 				if types.IsInterface(pType) {
 					ctx.unify(fTerm,
-						T(Closure{
+						t(tClosure{
 							called: true,
-							funs:   make(map[*ssa.Function][]*Term),
-							args:   []*Term{objT},
+							funs:   make(map[*ssa.Function][]*term),
+							args:   []*term{objT},
 							rval:   mkFresh(),
 						}))
 				} else {
@@ -205,10 +205,10 @@ func Analyze(config AnalysisConfig) Result {
 						}
 
 						ctx.unify(fTerm,
-							T(Closure{
+							t(tClosure{
 								called: true,
-								funs:   make(map[*ssa.Function][]*Term),
-								args:   []*Term{v.(*Term)},
+								funs:   make(map[*ssa.Function][]*term),
+								args:   []*term{v.(*term)},
 								rval:   mkFresh(),
 							}))
 					})
@@ -260,8 +260,8 @@ func Analyze(config AnalysisConfig) Result {
 func (ctx *aContext) processFunc(fun *ssa.Function) {
 	// Helper function for constructing a points-to term with a singleton set
 	// for the sites field.
-	alloc := func(site ssa.Value, content *Term) *Term {
-		return T(PointsTo{
+	alloc := func(site ssa.Value, content *term) *term {
+		return t(tPointsTo{
 			x:     content,
 			preps: []prePTag{prePSite{site: site}},
 		})
@@ -276,20 +276,20 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 
 		switch common.Value.Name() {
 		case "append":
-			el := T(Array{x: mkFresh()})
+			el := t(tArray{x: mkFresh()})
 			ctx.unify(rval, alloc(call.Value(), el))
 			ctx.unify(rval, ctx.eval(common.Args[0]))
-			ctx.unify(ctx.eval(common.Args[1]), T(PointsTo{x: el}))
+			ctx.unify(ctx.eval(common.Args[1]), t(tPointsTo{x: el}))
 		case "recover":
 			ctx.unify(ctx.panicVar, ctx.eval(call.Value()))
 		case "ssa:wrapnilchk":
 			arg := ctx.eval(common.Args[0])
-			ctx.unify(arg, T(PointsTo{x: mkFresh()}))
+			ctx.unify(arg, t(tPointsTo{x: mkFresh()}))
 			ctx.unify(arg, rval)
 		case "copy":
-			el := T(Array{x: mkFresh()})
-			ctx.unify(ctx.eval(common.Args[0]), T(PointsTo{x: el}))
-			ctx.unify(ctx.eval(common.Args[1]), T(PointsTo{x: el}))
+			el := t(tArray{x: mkFresh()})
+			ctx.unify(ctx.eval(common.Args[0]), t(tPointsTo{x: el}))
+			ctx.unify(ctx.eval(common.Args[1]), t(tPointsTo{x: el}))
 		}
 	}
 
@@ -305,14 +305,14 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 			sc == ctx.sync_runtime_registerPoolCleanup:
 			// Immediately treat argument as called
 			f := common.Args[0]
-			args := make([]*Term, f.Type().(*types.Signature).Params().Len())
+			args := make([]*term, f.Type().(*types.Signature).Params().Len())
 			for i := range args {
 				args[i] = mkFresh()
 			}
 
 			ctx.unify(ctx.eval(common.Args[0]),
-				T(Closure{
-					funs:   make(map[*ssa.Function][]*Term),
+				t(tClosure{
+					funs:   make(map[*ssa.Function][]*term),
 					called: true,
 					args:   args,
 					rval:   mkFresh(),
@@ -328,16 +328,16 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 
 			// Model startTimer as calling the function in the field 'f' of the
 			// provided runtimeTimer with the argument in field 'arg'.
-			fStruct := ctx.zeroTermForType(runtimeTimerT).(Struct)
+			fStruct := ctx.zeroTermForType(runtimeTimerT).(tStruct)
 			fStruct.fields[argI] = mkFresh()
-			fStruct.fields[fI] = T(Closure{
+			fStruct.fields[fI] = t(tClosure{
 				called: true,
-				funs:   make(map[*ssa.Function][]*Term),
-				args:   []*Term{fStruct.fields[argI], mkFresh()},
+				funs:   make(map[*ssa.Function][]*term),
+				args:   []*term{fStruct.fields[argI], mkFresh()},
 				rval:   mkFresh(),
 			})
 
-			ctx.unify(ctx.eval(common.Args[0]), T(PointsTo{x: T(fStruct)}))
+			ctx.unify(ctx.eval(common.Args[0]), t(tPointsTo{x: t(fStruct)}))
 
 			return true
 
@@ -348,54 +348,54 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 
 	for _, block := range fun.Blocks {
 		for _, insn := range block.Instrs {
-			switch t := insn.(type) {
+			switch insn := insn.(type) {
 			case ssa.CallInstruction:
-				common := t.Common()
+				common := insn.Common()
 
 				rval := mkFresh()
-				if v := t.Value(); v != nil {
+				if v := insn.Value(); v != nil {
 					rval = ctx.sterm(v)
 				}
 
 				if common.IsInvoke() {
 					recv := common.Value
-					itf := ctx.zeroTermForType(recv.Type()).(Interface)
+					itf := ctx.zeroTermForType(recv.Type()).(tInterface)
 					itf.calledMethods[common.Method] = method{
 						slices.Map(common.Args, ctx.eval),
 						rval,
 					}
 
-					ctx.unify(ctx.eval(recv), T(PointsTo{x: T(itf)}))
+					ctx.unify(ctx.eval(recv), t(tPointsTo{x: t(itf)}))
 				} else if _, ok := common.Value.(*ssa.Builtin); ok {
-					handleBuiltin(t)
-				} else if !modelFun(t) {
-					closure := Closure{
-						funs:   make(map[*ssa.Function][]*Term),
+					handleBuiltin(insn)
+				} else if !modelFun(insn) {
+					closure := tClosure{
+						funs:   make(map[*ssa.Function][]*term),
 						called: true,
 						args:   slices.Map(common.Args, ctx.eval),
 						rval:   rval,
 					}
 
-					ctx.unify(ctx.eval(common.Value), T(closure))
+					ctx.unify(ctx.eval(common.Value), t(closure))
 				}
 
 			case ssa.Value:
-				/* if !PointerLike(t.Type()) {
+				/* if !PointerLike(insn.Type()) {
 					continue
 				} */
 
-				reg := ctx.sterm(t)
-				switch t := t.(type) {
+				reg := ctx.sterm(insn)
+				switch insn := insn.(type) {
 				case *ssa.Alloc:
 					// handled in eval
 
 				case *ssa.MakeChan:
-					ctx.unify(reg, T(Chan{payload: mkFresh()}))
+					ctx.unify(reg, t(tChan{payload: mkFresh()}))
 
 				case *ssa.MakeClosure:
-					fun := t.Fn.(*ssa.Function)
-					fvs := slices.Map(t.Bindings, ctx.eval)
-					funs := map[*ssa.Function][]*Term{fun: fvs}
+					fun := insn.Fn.(*ssa.Function)
+					fvs := slices.Map(insn.Bindings, ctx.eval)
+					funs := map[*ssa.Function][]*term{fun: fvs}
 
 					if ctx.config.BindFreeVarsEagerly {
 						for i, fv := range fun.FreeVars {
@@ -403,205 +403,205 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 						}
 					}
 
-					ctx.unify(reg, T(Closure{funs: funs, rval: mkFresh()}))
+					ctx.unify(reg, t(tClosure{funs: funs, rval: mkFresh()}))
 
 				case *ssa.MakeSlice:
-					ctx.unify(reg, T(Array{x: mkFresh()}))
+					ctx.unify(reg, t(tArray{x: mkFresh()}))
 
 				case *ssa.MakeInterface:
-					itf := ctx.zeroTermForType(t.Type()).(Interface)
-					itf.contents.Set(t.X.Type(), ctx.eval(t.X))
+					itf := ctx.zeroTermForType(insn.Type()).(tInterface)
+					itf.contents.Set(insn.X.Type(), ctx.eval(insn.X))
 
-					ctx.unify(reg, T(itf))
+					ctx.unify(reg, t(itf))
 
 				case *ssa.MakeMap:
-					ctx.unify(reg, T(Map{keys: mkFresh(), values: mkFresh()}))
+					ctx.unify(reg, t(tMap{keys: mkFresh(), values: mkFresh()}))
 
 				case *ssa.UnOp:
-					rhs := ctx.eval(t.X)
-					switch t.Op {
+					rhs := ctx.eval(insn.X)
+					switch insn.Op {
 					case token.MUL:
-						ctx.unify(rhs, T(PointsTo{x: reg}))
+						ctx.unify(rhs, t(tPointsTo{x: reg}))
 
 					case token.ARROW:
 						res := mkFresh()
-						ctx.unify(rhs, T(PointsTo{x: T(Chan{payload: res})}))
+						ctx.unify(rhs, t(tPointsTo{x: t(tChan{payload: res})}))
 
-						if t.CommaOk {
-							fStruct := ctx.zeroTermForType(t.Type()).(Struct)
+						if insn.CommaOk {
+							fStruct := ctx.zeroTermForType(insn.Type()).(tStruct)
 							fStruct.fields[0] = res
-							res = T(fStruct)
+							res = t(fStruct)
 						}
 
 						ctx.unify(reg, res)
 					}
 
 				case *ssa.Convert:
-					switch t.Type().Underlying().(type) {
+					switch insn.Type().Underlying().(type) {
 					case *types.Pointer:
-						if bt, ok := t.X.Type().Underlying().(*types.Basic); !ok ||
+						if bt, ok := insn.X.Type().Underlying().(*types.Basic); !ok ||
 							bt.Kind() != types.UnsafePointer {
-							log.Panicf("??? %v", t.X)
+							log.Panicf("??? %v", insn.X)
 						}
 
 						// Treat conversion from unsafe pointer to pointer as a new allocation
-						ctx.unify(reg, alloc(t, mkFresh()))
+						ctx.unify(reg, alloc(insn, mkFresh()))
 
 					case *types.Slice:
-						ctx.unify(reg, alloc(t, T(Array{x: mkFresh()})))
+						ctx.unify(reg, alloc(insn, t(tArray{x: mkFresh()})))
 					}
 
 				case *ssa.ChangeType:
-					ctx.unify(reg, ctx.eval(t.X))
+					ctx.unify(reg, ctx.eval(insn.X))
 
 				case *ssa.ChangeInterface:
-					ctx.unify(reg, ctx.eval(t.X))
+					ctx.unify(reg, ctx.eval(insn.X))
 
 				case *ssa.Slice:
-					ctx.unify(reg, ctx.eval(t.X))
+					ctx.unify(reg, ctx.eval(insn.X))
 
 				case *ssa.SliceToArrayPointer:
-					ctx.unify(reg, ctx.eval(t.X))
+					ctx.unify(reg, ctx.eval(insn.X))
 
 				case *ssa.IndexAddr:
 					fresh := mkFresh()
-					base := ctx.eval(t.X)
-					ctx.unify(base, T(PointsTo{x: T(Array{x: fresh})}))
-					ctx.unify(reg, T(PointsTo{
+					base := ctx.eval(insn.X)
+					ctx.unify(base, t(tPointsTo{x: t(tArray{x: fresh})}))
+					ctx.unify(reg, t(tPointsTo{
 						x:     fresh,
 						preps: []prePTag{prePAccess{base: base, field: -1}},
 					}))
 
 				case *ssa.Index:
-					switch t.X.Type().Underlying().(type) {
+					switch insn.X.Type().Underlying().(type) {
 					case *types.Array:
-						ctx.unify(ctx.eval(t.X), T(Array{x: reg}))
+						ctx.unify(ctx.eval(insn.X), t(tArray{x: reg}))
 					case *types.Basic:
 					default:
-						log.Panicf("Unhandled index on %T", t.X.Type())
+						log.Panicf("Unhandled index on %T", insn.X.Type())
 					}
 
 				case *ssa.FieldAddr:
-					sTyp := t.X.Type().Underlying().(*types.Pointer).Elem()
-					fStruct := ctx.zeroTermForType(sTyp).(Struct)
+					sTyp := insn.X.Type().Underlying().(*types.Pointer).Elem()
+					fStruct := ctx.zeroTermForType(sTyp).(tStruct)
 					fresh := mkFresh()
-					fStruct.fields[t.Field] = fresh
+					fStruct.fields[insn.Field] = fresh
 
-					base := ctx.eval(t.X)
-					ctx.unify(base, T(PointsTo{x: T(fStruct)}))
-					ctx.unify(reg, T(PointsTo{
+					base := ctx.eval(insn.X)
+					ctx.unify(base, t(tPointsTo{x: t(fStruct)}))
+					ctx.unify(reg, t(tPointsTo{
 						x:     fresh,
-						preps: []prePTag{prePAccess{base: base, field: t.Field}},
+						preps: []prePTag{prePAccess{base: base, field: insn.Field}},
 					}))
 
 				case *ssa.Field:
-					fStruct := ctx.zeroTermForType(t.X.Type()).(Struct)
-					fStruct.fields[t.Field] = reg
-					ctx.unify(ctx.eval(t.X), T(fStruct))
+					fStruct := ctx.zeroTermForType(insn.X.Type()).(tStruct)
+					fStruct.fields[insn.Field] = reg
+					ctx.unify(ctx.eval(insn.X), t(fStruct))
 
 				case *ssa.Lookup:
 					res := mkFresh()
-					ctx.unify(ctx.eval(t.X),
-						T(PointsTo{x: T(Map{keys: mkFresh(), values: res})}))
+					ctx.unify(ctx.eval(insn.X),
+						t(tPointsTo{x: t(tMap{keys: mkFresh(), values: res})}))
 
-					if t.CommaOk {
-						fStruct := ctx.zeroTermForType(t.Type()).(Struct)
+					if insn.CommaOk {
+						fStruct := ctx.zeroTermForType(insn.Type()).(tStruct)
 						fStruct.fields[0] = res
-						res = T(fStruct)
+						res = t(fStruct)
 					}
 
 					ctx.unify(reg, res)
 
 				case *ssa.Phi:
-					for _, v := range t.Edges {
+					for _, v := range insn.Edges {
 						ctx.unify(reg, ctx.eval(v))
 					}
 
 				case *ssa.Select:
-					fields := []*Term{mkFresh(), mkFresh()}
-					for _, v := range t.States {
+					fields := []*term{mkFresh(), mkFresh()}
+					for _, v := range insn.States {
 						if v.Dir == types.RecvOnly {
 							fresh := mkFresh()
 							ctx.unify(ctx.eval(v.Chan),
-								T(PointsTo{x: T(Chan{payload: fresh})}))
+								t(tPointsTo{x: t(tChan{payload: fresh})}))
 							fields = append(fields, fresh)
 						} else {
 							ctx.unify(ctx.eval(v.Chan),
-								T(PointsTo{x: T(Chan{payload: ctx.eval(v.Send)})}))
+								t(tPointsTo{x: t(tChan{payload: ctx.eval(v.Send)})}))
 						}
 					}
 
-					ctx.unify(reg, T(Struct{fields: fields}))
+					ctx.unify(reg, t(tStruct{fields: fields}))
 
 				case *ssa.Extract:
-					fStruct := ctx.zeroTermForType(t.Tuple.Type()).(Struct)
-					fStruct.fields[t.Index] = reg
+					fStruct := ctx.zeroTermForType(insn.Tuple.Type()).(tStruct)
+					fStruct.fields[insn.Index] = reg
 
-					ctx.unify(ctx.eval(t.Tuple), T(fStruct))
+					ctx.unify(ctx.eval(insn.Tuple), t(fStruct))
 
 				case *ssa.TypeAssert:
 					res := mkFresh()
 
-					if _, isItf := t.AssertedType.Underlying().(*types.Interface); isItf {
-						ctx.unify(res, ctx.eval(t.X))
+					if _, isItf := insn.AssertedType.Underlying().(*types.Interface); isItf {
+						ctx.unify(res, ctx.eval(insn.X))
 					} else {
-						fItf := ctx.zeroTermForType(t.X.Type()).(Interface)
-						fItf.contents.Set(t.AssertedType, res)
-						ctx.unify(ctx.eval(t.X), T(PointsTo{x: T(fItf)}))
+						fItf := ctx.zeroTermForType(insn.X.Type()).(tInterface)
+						fItf.contents.Set(insn.AssertedType, res)
+						ctx.unify(ctx.eval(insn.X), t(tPointsTo{x: t(fItf)}))
 					}
 
-					if t.CommaOk {
-						fStruct := ctx.zeroTermForType(t.Type()).(Struct)
+					if insn.CommaOk {
+						fStruct := ctx.zeroTermForType(insn.Type()).(tStruct)
 						fStruct.fields[0] = res
-						res = T(fStruct)
+						res = t(fStruct)
 					}
 
 					ctx.unify(reg, res)
 
 				case *ssa.Range:
-					if _, isMap := t.X.Type().Underlying().(*types.Map); isMap {
-						ctx.unify(reg, ctx.eval(t.X))
+					if _, isMap := insn.X.Type().Underlying().(*types.Map); isMap {
+						ctx.unify(reg, ctx.eval(insn.X))
 					}
 					// Disregard string ranges
 
 				case *ssa.Next:
-					if !t.IsString {
+					if !insn.IsString {
 						k, v := mkFresh(), mkFresh()
-						ctx.unify(ctx.eval(t.Iter),
-							T(PointsTo{x: T(Map{keys: k, values: v})}))
+						ctx.unify(ctx.eval(insn.Iter),
+							t(tPointsTo{x: t(tMap{keys: k, values: v})}))
 
-						fStruct := ctx.zeroTermForType(t.Type()).(Struct)
+						fStruct := ctx.zeroTermForType(insn.Type()).(tStruct)
 						fStruct.fields[1] = k
 						fStruct.fields[2] = v
-						ctx.unify(reg, T(fStruct))
+						ctx.unify(reg, t(fStruct))
 					}
 					// Disregard string ranges
 
 				case *ssa.BinOp:
 
 				default:
-					log.Panicf("Unhandled: %T %v", t, t)
+					log.Panicf("Unhandled: %T %v", insn, insn)
 				}
 
 			case *ssa.Store:
-				lhs := ctx.eval(t.Addr)
-				rhs := ctx.eval(t.Val)
-				ctx.unify(lhs, T(PointsTo{x: rhs}))
+				lhs := ctx.eval(insn.Addr)
+				rhs := ctx.eval(insn.Val)
+				ctx.unify(lhs, t(tPointsTo{x: rhs}))
 
 			case *ssa.Send:
-				lhs := ctx.eval(t.Chan)
-				rhs := ctx.eval(t.X)
-				ctx.unify(lhs, T(PointsTo{x: T(Chan{payload: rhs})}))
+				lhs := ctx.eval(insn.Chan)
+				rhs := ctx.eval(insn.X)
+				ctx.unify(lhs, t(tPointsTo{x: t(tChan{payload: rhs})}))
 
 			case *ssa.MapUpdate:
-				ctx.unify(ctx.eval(t.Map),
-					T(PointsTo{x: T(Map{
-						keys:   ctx.eval(t.Key),
-						values: ctx.eval(t.Value),
+				ctx.unify(ctx.eval(insn.Map),
+					t(tPointsTo{x: t(tMap{
+						keys:   ctx.eval(insn.Key),
+						values: ctx.eval(insn.Value),
 					})}))
 
 			case *ssa.Panic:
-				ctx.unify(ctx.panicVar, ctx.eval(t.X))
+				ctx.unify(ctx.panicVar, ctx.eval(insn.X))
 
 			case *ssa.Return,
 				*ssa.RunDefers,
@@ -609,7 +609,7 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 				*ssa.Jump:
 
 			default:
-				log.Panicf("Unhandled: %T %v", t, t)
+				log.Panicf("Unhandled: %T %v", insn, insn)
 			}
 		}
 	}
