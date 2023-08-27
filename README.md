@@ -26,6 +26,28 @@ Contrary to the implementation of Andersen's algorithm, no special modelling is 
 Also, in this implementation constraint generation is interleaved with constraint solving.
 This makes it easy to only generate constraints for reachable code, which the Andersen implementation does not do.
 
+## Benchmarks
+
+The [benchmark submodule](benchmark/main.go) contains some code for benchmarking the analysis against Andersen's pointer analysis on a few popular Go projects.
+It measures analysis time, analysis precision, and a couple of call graph metrics.
+
+The benchmarking code is not mature nor rigorous.
+On my machine [crunch.py](benchmark/crunch.py) outputs:
+
+```
+Benchmark results for 14 modules
+
+Steensgaard stats:
+    Average analysis time:            2.22s
+    Average # of non-static edges:    65570.14
+    Average # of reachable functions: 12886.21
+
+Andersen stats:
+    Average analysis time:            14.89s
+    Average # of non-static edges:    30481.00
+    Average # of reachable functions: 13160.00
+```
+
 [andersen]: https://citeseerx.ist.psu.edu/document?repid=rep1&type=pdf&doi=b7efe971a34a0f2482e0b2520ffb31062dcdde62
 [gopointer]: https://pkg.go.dev/golang.org/x/tools/go/pointer
 [steensgaard]: https://dl.acm.org/doi/abs/10.1145/237721.237727
