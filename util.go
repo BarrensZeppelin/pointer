@@ -3,6 +3,8 @@ package pointer
 import (
 	"fmt"
 	"go/types"
+
+	"golang.org/x/tools/go/types/typeutil"
 )
 
 func PointerLike(t types.Type) bool {
@@ -28,5 +30,15 @@ func FieldIndex(t *types.Struct, fieldName string) int {
 		}
 	}
 
-	panic(fmt.Errorf("No field on %v named %s", t, fieldName))
+	panic(fmt.Errorf("no field on %v named %s", t, fieldName))
+}
+
+type typemap[V any] struct{ typeutil.Map }
+
+func (m *typemap[V]) Has(key types.Type) bool     { return m.Map.At(key) != nil }
+func (m *typemap[V]) At(key types.Type) V         { return m.Map.At(key).(V) }
+func (m *typemap[V]) Set(key types.Type, value V) { m.Map.Set(key, value) }
+
+func (m *typemap[V]) Iterate(f func(key types.Type, value V)) {
+	m.Map.Iterate(func(key types.Type, value any) { f(key, value.(V)) })
 }

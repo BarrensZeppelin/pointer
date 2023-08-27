@@ -98,20 +98,20 @@ func (r *Result) CallGraph() *callgraph.Graph {
 				goto DONE
 			}
 
-			funs.contents.Iterate(func(fType types.Type, v any) {
+			funs.contents.Iterate(func(fType types.Type, v *term) {
 				fSig, ok := fType.Underlying().(*types.Signature)
 				if !ok || fSig.Recv() != nil || fSig.Params().Len() != 1 {
 					return
 				}
 
-				clos, ok := find(v.(*term)).x.(tClosure)
+				clos, ok := find(v).x.(tClosure)
 				if !ok {
 					return
 				}
 
 				pType := fSig.Params().At(0).Type()
 				anyWorks := false
-				obj.contents.Iterate(func(oType types.Type, _ any) {
+				obj.contents.Iterate(func(oType types.Type, _ *term) {
 					anyWorks = anyWorks || types.AssignableTo(oType, pType)
 				})
 

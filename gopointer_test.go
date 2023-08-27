@@ -253,7 +253,7 @@ func TestGoPointerTests(t *testing.T) {
 							} else {
 								tv, err := types.Eval(prog.Fset, spkgs[0].Pkg, mainPkg.Syntax[0].Pos(), typstr)
 								if assert.NoError(t, err, "'%s' is not a valid type", typstr) {
-									expected.Set(tv.Type, struct{}{})
+									expected.Set(tv.Type, nil)
 								}
 							}
 
@@ -267,10 +267,10 @@ func TestGoPointerTests(t *testing.T) {
 					for _, v := range pa {
 						if types.IsInterface(v.Type()) {
 							ptres.DynamicTypes(v).Iterate(func(k types.Type, _ any) {
-								actual.Set(k, struct{}{})
+								actual.Set(k, nil)
 							})
 						} else {
-							actual.Set(v.Type(), struct{}{})
+							actual.Set(v.Type(), nil)
 						}
 					}
 

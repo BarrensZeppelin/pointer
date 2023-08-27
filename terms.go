@@ -7,7 +7,6 @@ import (
 
 	"github.com/BarrensZeppelin/pointer/internal/slices"
 	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/types/typeutil"
 )
 
 type termTag interface {
@@ -119,14 +118,14 @@ type method struct {
 
 type tInterface struct {
 	ttag
-	contents      *typeutil.Map
+	contents      *typemap[*term]
 	calledMethods map[*types.Func]method
 }
 
 func (i tInterface) String() string {
 	var inner []string
-	i.contents.Iterate(func(t types.Type, v any) {
-		inner = append(inner, fmt.Sprintf("%v ↦ %v", t, find(v.(*term))))
+	i.contents.Iterate(func(t types.Type, v *term) {
+		inner = append(inner, fmt.Sprintf("%v ↦ %v", t, find(v)))
 	})
 	return fmt.Sprintf("Interface(%v)", inner)
 }
@@ -137,7 +136,7 @@ func (i tInterface) iterateCallees(
 	f func(fun *ssa.Function, recv *term),
 ) {
 	recv := method.Type().(*types.Signature).Recv().Type().Underlying().(*types.Interface)
-	i.contents.Iterate(func(key types.Type, v any) {
+	i.contents.Iterate(func(key types.Type, v *term) {
 		ms := prog.MethodSets.MethodSet(key)
 		if sel := ms.Lookup(method.Pkg(), method.Name()); sel != nil &&
 			// Check that the selected method (selected on name only) has the
@@ -150,7 +149,7 @@ func (i tInterface) iterateCallees(
 			}
 
 			fun := prog.MethodValue(sel)
-			f(fun, v.(*term))
+			f(fun, v)
 		}
 	})
 }
@@ -394,15 +393,15 @@ func (ctx *aContext) unify(a, b *term) {
 				union(a, b)
 			}
 
-			// xContents := make(map[types.Type]*Term, x.contents.Len())
+			// xContents := make(map[types.Type]*term, x.contents.Len())
 			sharedContents := make(map[types.Type]*term)
 
 			// Merge interface values from x to y
-			x.contents.Iterate(func(key types.Type, v1 any) {
-				if v2 := y.contents.At(key); v2 != nil {
-					sharedContents[key] = v1.(*term)
+			x.contents.Iterate(func(key types.Type, v1 *term) {
+				if y.contents.Has(key) {
+					sharedContents[key] = v1
 				} else {
-					// xContents[key] = v1.(*Term)
+					// xContents[key] = v1
 					y.contents.Set(key, v1)
 				}
 			})
@@ -432,7 +431,7 @@ func (ctx *aContext) unify(a, b *term) {
 
 			// Process delayed unifications for shared contents
 			for key, v1 := range sharedContents {
-				ctx.unify(v1, y.contents.At(key).(*term))
+				ctx.unify(v1, y.contents.At(key))
 			}
 
 			// Call relevant functions on contents in x
@@ -488,7 +487,7 @@ func (ctx *aContext) zeroTermForType(t types.Type) termTag {
 		return tStruct{fields: fields}
 
 	case *types.Interface:
-		m := &typeutil.Map{}
+		m := &typemap[*term]{}
 		m.SetHasher(ctx.tHasher)
 		return tInterface{
 			contents:      m,

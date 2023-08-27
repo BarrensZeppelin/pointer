@@ -182,8 +182,7 @@ func Analyze(config AnalysisConfig) Result {
 				break
 			}
 
-			funs.contents.Iterate(func(fType types.Type, v any) {
-				fTerm := v.(*term)
+			funs.contents.Iterate(func(fType types.Type, fTerm *term) {
 				fSig, ok := fType.Underlying().(*types.Signature)
 				if !ok || fSig.Recv() != nil || fSig.Params().Len() != 1 {
 					return
@@ -199,7 +198,7 @@ func Analyze(config AnalysisConfig) Result {
 							rval:   mkFresh(),
 						}))
 				} else {
-					obj.contents.Iterate(func(oType types.Type, v any) {
+					obj.contents.Iterate(func(oType types.Type, v *term) {
 						if !types.AssignableTo(oType, pType) {
 							return
 						}
@@ -208,7 +207,7 @@ func Analyze(config AnalysisConfig) Result {
 							t(tClosure{
 								called: true,
 								funs:   make(map[*ssa.Function][]*term),
-								args:   []*term{v.(*term)},
+								args:   []*term{v},
 								rval:   mkFresh(),
 							}))
 					})

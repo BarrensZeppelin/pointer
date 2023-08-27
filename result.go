@@ -158,7 +158,7 @@ func (r *Result) DynamicTypes(v ssa.Value) (res *typeutil.Map) {
 			panic(fmt.Errorf("%v points to non-MakeInterface: %v", v, label))
 		}
 
-		res.Set(mkitf.X.Type(), struct{}{})
+		res.Set(mkitf.X.Type(), nil)
 	}
 
 	return
