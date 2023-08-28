@@ -7,3 +7,12 @@ func Map[L ~[]X, X, Y any](l L, f func(X) Y) []Y {
 	}
 	return r
 }
+
+func Filter[L ~[]X, X any](l L, f func(X) bool) (r L) {
+	for _, x := range l {
+		if f(x) {
+			r = append(r, x)
+		}
+	}
+	return
+}

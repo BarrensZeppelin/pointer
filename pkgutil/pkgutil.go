@@ -2,8 +2,10 @@ package pkgutil
 
 import (
 	"errors"
+	"fmt"
 	"os"
 
+	"github.com/BarrensZeppelin/pointer/internal/slices"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -35,6 +37,21 @@ func LoadPackagesWithConfig(config *packages.Config, queries ...string) ([]*pack
 	case packages.PrintErrors(pkgs) > 0:
 		return pkgs, errors.New("errors encountered while loading packages")
 	default:
+		if config.Tests {
+			// Deduplicate packages that have test functions (such packages are
+			// returned twice, once with no tests and once with tests. We discard
+			// the package without tests.) This prevents duplicate versions of the
+			// same types, functions, ssa values, etc., which can be very confusing
+			// when debugging.
+			packageIDs := map[string]bool{}
+			for _, pkg := range pkgs {
+				packageIDs[pkg.ID] = true
+			}
+
+			pkgs = slices.Filter(pkgs, func(pkg *packages.Package) bool {
+				return !packageIDs[fmt.Sprintf("%s [%s.test]", pkg.ID, pkg.ID)]
+			})
+		}
 		return pkgs, nil
 	}
 }

@@ -106,7 +106,7 @@ func TestGoPointerTests(t *testing.T) {
 
 			mainPkgIndex := 0
 			if entry.Name() == "a_test.go" {
-				require.Len(t, pkgs, 3)
+				require.Len(t, pkgs, 2)
 
 				for i, pkg := range pkgs {
 					if pkg.Name == "a" {
