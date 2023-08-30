@@ -173,7 +173,9 @@ func (ctx *aContext) result(callgraph *callgraph.Graph) Result {
 			varToTerm: ctx.varToTerm,
 
 			// used to construct call graph edges
-			time_startTimer: ctx.time_startTimer,
+			godebug_setUpdate:                ctx.godebug_setUpdate,
+			sync_runtime_registerPoolCleanup: ctx.sync_runtime_registerPoolCleanup,
+			time_startTimer:                  ctx.time_startTimer,
 		},
 		callGraph:        callgraph,
 		resolvedPointers: make(map[*term][]Label),

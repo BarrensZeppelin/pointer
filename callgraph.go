@@ -46,7 +46,13 @@ func (r *Result) CallGraph() *callgraph.Graph {
 								})
 						}
 					} else if sc := common.StaticCallee(); sc != nil {
-						if sc == ctx.time_startTimer {
+						var funs map[*ssa.Function][]*term
+						switch {
+						case sc == ctx.godebug_setUpdate,
+							sc == ctx.sync_runtime_registerPoolCleanup:
+							funs = find(ctx.eval(common.Args[0])).x.(tClosure).funs
+
+						case sc == ctx.time_startTimer:
 							argT := sc.Signature.Params().At(0).Type().(*types.Pointer)
 							runtimeTimerT := argT.Elem().Underlying().(*types.Struct)
 
@@ -54,10 +60,11 @@ func (r *Result) CallGraph() *callgraph.Graph {
 							arg := find(ctx.eval(common.Args[0]))
 							strukt := find(arg.x.(tPointsTo).x).x.(tStruct)
 							closure := find(strukt.fields[fI]).x.(tClosure)
+							funs = closure.funs
+						}
 
-							for fun := range closure.funs {
-								callgraph.AddEdge(cg.CreateNode(sc), nil, cg.CreateNode(fun))
-							}
+						for fun := range funs {
+							callgraph.AddEdge(cg.CreateNode(sc), nil, cg.CreateNode(fun))
 						}
 
 						callees = []*ssa.Function{sc}

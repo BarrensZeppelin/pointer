@@ -316,7 +316,6 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 					args:   args,
 					rval:   mkFresh(),
 				}))
-			return true
 
 		case sc == ctx.time_startTimer:
 			argT := sc.Signature.Params().At(0).Type()
@@ -338,11 +337,12 @@ func (ctx *aContext) processFunc(fun *ssa.Function) {
 
 			ctx.unify(ctx.eval(common.Args[0]), t(tPointsTo{x: t(fStruct)}))
 
-			return true
-
 		default:
 			return false
 		}
+
+		ctx.discoverFun(sc)
+		return true
 	}
 
 	for _, block := range fun.Blocks {
